@@ -36,6 +36,7 @@ from ..services.app_service import AppService, ServiceError
 from ..services.dto import ProjectDTO
 from .context import ScreenContext
 from .screens.base import ScreenBase
+from .screens.content import ContentScreen
 from .screens.diagnosis import DiagnosisScreen
 from .screens.evidence import EvidenceScreen
 from .screens.experiments import ExperimentsScreen
@@ -220,6 +221,7 @@ class MainWindow(QMainWindow):
             "targets": TargetsScreen(),
             "mvp": MvpScreen(),
             "experiments": ExperimentsScreen(),
+            "content": ContentScreen(),
             "report": ReportScreen(),
             "versions": VersionsScreen(),
             "policy": PolicyScreen(),

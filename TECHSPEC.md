@@ -1572,7 +1572,10 @@ audit_logs / analytics_events
 
 ## A.7 다음 단계
 
-Phase 0~3 완료. 다음은 Phase 4(도메인별 문제 품질·오류 진단 모듈)와
-Phase 5(앱 이벤트 수집, 퍼널 대시보드)다.
+Phase 0~4 완료. 남은 것은 Phase 5(앱 이벤트 수집, 퍼널 대시보드, 실제 데이터 기반 자동 재평가)다.
+
+도메인 콘텐츠 진단은 `core/content.py`의 계약과 각 도메인 모듈의
+`content_spec()` / `diagnose_content()`로 구현했다.
+examath는 뺄셈 오답에서 절차를 역추적하고, VibeQuest는 문항 유형을 분류한다.
 LLM은 `core/ports.py`의 Protocol 구현체로 붙이며, 붙이더라도
 점수·신뢰도·피벗 판정은 규칙 엔진이 계속 담당한다.

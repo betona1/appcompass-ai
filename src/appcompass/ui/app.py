@@ -189,6 +189,26 @@ def run_selftest(report_path: str | None = None) -> int:
         first = service.next_step(None)
         check("서비스 다음 할 일", first.step_id == "CREATE_PROJECT", first.step_id)
 
+        # 도메인 콘텐츠 진단 — 규칙이 실제로 분류하는지
+        from ..core.domains.registry import get_domain
+
+        em = get_domain(DomainCode.EXAMATH)
+        err = em.diagnose_content(
+            {"minuend": "43", "subtrahend": "7", "answer": "44", "observation": ""}
+        )
+        check(
+            "examath 오류 분류",
+            err.classification == "REGROUPING_CONCEPT",
+            err.classification_label,
+        )
+        vq = get_domain(DomainCode.VIBEQUEST)
+        q = vq.diagnose_content({"stem": "API란 무엇인가?"})
+        check(
+            "VibeQuest 문항 품질",
+            q.classification == "ROTE_DEFINITION" and q.critical_count >= 1,
+            q.classification_label,
+        )
+
         # 피벗 승인 — 사람의 결정이 기록으로 남는지
         from ..core.enums import ApprovalStatus
         from ..core.models import RawIdeaInput

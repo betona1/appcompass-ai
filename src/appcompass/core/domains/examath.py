@@ -16,6 +16,7 @@ from ..enums import (
     Severity,
     WarningCode,
 )
+from ..content import ContentDiagnosis, ContentField, ContentSpec
 from ..models import (
     DiagnosisResult,
     DiagnosisWarning,
@@ -412,6 +413,58 @@ class ExamathDomain:
             MetricDefinition("error_type_detected", "오류 유형 감지"),
             MetricDefinition("parent_weekly_summary_view", "부모 주간 요약 조회"),
         ]
+
+    # -- 콘텐츠 진단: 오류 유형 (CLAUDE.md 5.5) ------------------------------
+    def content_spec(self) -> ContentSpec | None:
+        return ContentSpec(
+            title="오류 유형 진단",
+            description=(
+                "아이가 틀린 문제 하나를 넣으면 어떤 개념이 빠졌는지 분류합니다.\n"
+                "정답률이 아니라 오류 유형으로 봐야 무엇을 가르칠지 알 수 있습니다."
+            ),
+            fields=(
+                ContentField("minuend", "빼어지는 수", "예: 43", numeric=True),
+                ContentField("subtrahend", "빼는 수", "예: 7", numeric=True),
+                ContentField(
+                    "answer", "아이가 쓴 답",
+                    "비워 두면 '시도하지 않음'으로 봅니다", numeric=True, required=False,
+                ),
+                ContentField(
+                    "observation", "관찰된 행동 (선택)",
+                    "손가락을 쓰는지, 건너뛰는지, 구체물로는 되는지 등",
+                    multiline=True, required=False,
+                ),
+            ),
+            example={
+                "minuend": "43", "subtrahend": "7", "answer": "44",
+                "observation": "세로로 쓰고 각 자리를 따로 계산함. 손가락은 쓰지 않음.",
+            },
+            example_label="예시: 43 - 7 을 44라고 답한 경우",
+        )
+
+    def diagnose_content(self, values: dict[str, str]) -> ContentDiagnosis:
+        from .examath_errors import diagnose_subtraction
+
+        def as_int(key: str) -> int | None:
+            raw = (values.get(key) or "").strip()
+            if not raw:
+                return None
+            try:
+                return int(raw)
+            except ValueError:
+                return None
+
+        minuend = as_int("minuend")
+        subtrahend = as_int("subtrahend")
+        if minuend is None or subtrahend is None:
+            raise ValueError("빼어지는 수와 빼는 수를 숫자로 입력하세요.")
+        if minuend < subtrahend:
+            raise ValueError(
+                "빼어지는 수가 더 작습니다. 초등 2학년 범위에서는 다루지 않는 형태입니다."
+            )
+        return diagnose_subtraction(
+            minuend, subtrahend, as_int("answer"), values.get("observation", "")
+        )
 
     # -- 근거 예시 ---------------------------------------------------------
     def evidence_examples(self) -> list[EvidenceExample]:

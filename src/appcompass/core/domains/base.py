@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Protocol, Sequence, runtime_checkable
 
 from ..enums import DomainCode
+from ..content import ContentDiagnosis, ContentSpec
 from ..enums import DimensionCode, EvidenceType
 from ..models import (
     DiagnosisResult,
@@ -63,6 +64,12 @@ class DomainModule(Protocol):
         근거 자체가 아니다. 사용자가 실제 관찰로 바꿔 써야 한다.
         """
 
+    def content_spec(self) -> ContentSpec | None:
+        """콘텐츠 진단 양식. 이 도메인에 해당 기능이 없으면 None."""
+
+    def diagnose_content(self, values: dict[str, str]) -> ContentDiagnosis:
+        """콘텐츠 하나를 진단한다. 규칙 기반이며 결정론적이어야 한다."""
+
 
 class GenericDomain:
     """도메인이 지정되지 않은 프로젝트용 기본 모듈. 공통 규칙만 적용한다."""
@@ -99,6 +106,14 @@ class GenericDomain:
 
     def domain_pivot_rules(self) -> list[PivotRule]:
         return []
+
+    def content_spec(self) -> ContentSpec | None:
+        # 공통 도메인에는 진단할 고유 콘텐츠가 없다.
+        # 억지로 만들면 의미 없는 양식이 되므로 제공하지 않는다.
+        return None
+
+    def diagnose_content(self, values: dict[str, str]) -> ContentDiagnosis:
+        raise NotImplementedError("이 도메인에는 콘텐츠 진단이 없습니다.")
 
     def evidence_examples(self) -> list[EvidenceExample]:
         return [

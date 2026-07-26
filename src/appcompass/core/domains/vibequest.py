@@ -12,6 +12,7 @@ from ..enums import (
     Severity,
     WarningCode,
 )
+from ..content import ContentDiagnosis, ContentField, ContentSpec
 from ..models import (
     DiagnosisResult,
     DiagnosisWarning,
@@ -298,6 +299,62 @@ class VibeQuestDomain:
             MetricDefinition("concept_to_task_transfer", "학습 후 실제 작업 재개"),
             MetricDefinition("daily_mission_return", "다음 날 미션 재방문"),
         ]
+
+    # -- 콘텐츠 진단: 문항 품질 (CLAUDE.md 4.6~4.7) --------------------------
+    def content_spec(self) -> ContentSpec | None:
+        return ContentSpec(
+            title="문항 품질 점검",
+            description=(
+                "만든 문항을 넣으면 어떤 유형인지 분류하고 품질 문제를 찾습니다.\n"
+                "기획서에 '실제 상황형'이라고 써도 문항이 정의 암기형이면 소용없습니다."
+            ),
+            fields=(
+                ContentField("stem", "문항 지문", "실제 작업 상황을 포함해 적으세요", multiline=True),
+                ContentField(
+                    "choices", "보기 (한 줄에 하나, 선택)",
+                    "주관식이면 비워 둡니다", multiline=True, required=False,
+                ),
+                ContentField(
+                    "explanation", "정답 해설",
+                    "왜 그 답인지, 틀린 답은 왜 틀렸는지", multiline=True, required=False,
+                ),
+                ContentField(
+                    "project_stage", "대상 프로젝트 단계·난이도 (선택)",
+                    "예: 첫 배포 시도 단계 / 비개발자", required=False,
+                ),
+                ContentField(
+                    "source", "출처 (선택)",
+                    "공식 문서 링크나 실제 겪은 사례", required=False,
+                ),
+            ),
+            example={
+                "stem": "AI 코딩 도구로 만든 앱을 배포하려는데 'API key not found' 오류가 났습니다. 가장 먼저 확인해야 할 것은?",
+                "choices": (
+                    "환경변수에 API 키가 등록되어 있는지\n"
+                    "코드의 들여쓰기가 맞는지\n"
+                    "브라우저 캐시를 지웠는지\n"
+                    "인터넷이 연결되어 있는지"
+                ),
+                "explanation": "이 오류는 키 자체가 전달되지 않았다는 뜻입니다. 로컬에서는 되는데 배포에서만 나면 배포 환경의 환경변수 설정이 빠진 경우가 대부분입니다.",
+                "project_stage": "첫 배포 시도 단계 / 비개발자",
+                "source": "실제 커뮤니티 질문 사례 2026-07",
+            },
+            example_label="예시: 배포 오류 상황형 문항",
+        )
+
+    def diagnose_content(self, values: dict[str, str]) -> ContentDiagnosis:
+        from .vibequest_quality import diagnose_question
+
+        stem = (values.get("stem") or "").strip()
+        if not stem:
+            raise ValueError("문항 지문을 입력하세요.")
+        return diagnose_question(
+            stem=stem,
+            choices=values.get("choices", ""),
+            explanation=values.get("explanation", ""),
+            project_stage=values.get("project_stage", ""),
+            source=values.get("source", ""),
+        )
 
     # -- 근거 예시 ---------------------------------------------------------
     def evidence_examples(self) -> list[EvidenceExample]:

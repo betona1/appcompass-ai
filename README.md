@@ -2,7 +2,7 @@
 
 앱 아이디어를 구조화하고 진단해 **유지·수정·피벗**을 판단하는 기획 의사결정 시스템.
 
-현재 단계: **Phase 0~3 완료 (PySide6 데스크톱, 규칙 엔진 전용)**
+현재 단계: **Phase 0~4 완료 (PySide6 데스크톱, 규칙 엔진 전용)**
 
 > **AI가 정답을 결정하지 않습니다.**
 > 이 도구는 문제를 구조화하고, 부족한 근거를 찾고, 검증할 실험을 제안합니다.
@@ -48,7 +48,7 @@ python tools/build_exe.py
 ## 테스트
 
 ```bash
-pytest -q                # 179개
+pytest -q                # 208개
 ```
 
 UI 스모크 테스트는 offscreen 모드로 돌아가므로 창이 뜨지 않습니다.
@@ -84,6 +84,7 @@ appcompass/
 │  ├─ improvement.py   이미 만든 MVP의 개선 명세
 │  ├─ experiment.py    실험 제안과 근거 변환
 │  ├─ nextstep.py      다음 할 일 판정
+│  ├─ content.py       도메인 콘텐츠 진단 계약
 │  ├─ exports.py       작업용 엑셀
 │  ├─ ports.py         LLM 연결 지점 (지금은 비어 있음)
 │  └─ domains/         VibeQuest / examath 도메인 모듈
@@ -110,6 +111,7 @@ appcompass/
 | D. 타깃 후보 | 후보 비교 후 하나 선택 | — |
 | E. MVP | P0 / P1 / 제외 기능 확정 + **구현 상태 표시** | — |
 | **F. 실험** | **가설별 추천 실험 → 결과 → 근거 자동 등록** | 판단 갱신 |
+| **도메인 진단** | **문항 품질(VibeQuest) / 오류 유형(examath)** | — |
 | G. 피벗 보고서 | **승인/거절 기록** + 보고서·기술명세·개선명세·엑셀 내보내기 | 사람의 결정 |
 | H. 버전 비교 | 무엇이 왜 바뀌었고 점수·판단이 어떻게 달라졌는지 | — |
 | 정책 | 가중치·임계치 수정 (운영자) | 합계 100 강제 |
@@ -169,7 +171,6 @@ appcompass/
 
 ## 아직 없는 것
 
-- 도메인별 문제 품질·오류 진단 모듈 (Phase 4)
 
 - PDF 내보내기
 - 앱 이벤트 수집 SDK, 퍼널 대시보드
@@ -197,7 +198,12 @@ class MyDomain:
     def domain_pivot_rules(self) -> list[PivotRule]: ...
     def required_fields(self) -> tuple[tuple[str, str, str], ...]: ...
     def evidence_examples(self) -> list[EvidenceExample]: ...
+    def content_spec(self) -> ContentSpec | None: ...        # 콘텐츠 진단 양식
+    def diagnose_content(self, values) -> ContentDiagnosis: ...
 ```
+
+콘텐츠 진단이 필요 없는 도메인은 `content_spec()`이 `None`을 반환하면 됩니다.
+화면은 도메인이 준 양식을 그릴 뿐이라 새 도메인을 추가해도 UI는 바뀌지 않습니다.
 
 ---
 
