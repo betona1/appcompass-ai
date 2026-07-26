@@ -28,16 +28,18 @@ def run_selftest(report_path: str | None = None) -> int:
 
     성공하면 0, 실패하면 1을 반환하고 결과를 파일에 남긴다.
     """
-    import json
+    import tempfile
     from datetime import datetime, timezone
     from pathlib import Path
 
     from ..core.enums import DomainCode
-    from ..core.models import IdeaStructure
+    from ..core.exports import save_workbook
+    from ..core.models import AnalysisResult, IdeaStructure
     from ..core.pipeline import run_analysis
     from ..core.policy import EvaluationPolicy
     from ..core.report import render_html, render_markdown
     from ..core.schema import SCHEMA_SEARCH_PATHS, validate_analysis_result
+    from ..core.techspec import render_techspec
 
     lines: list[str] = []
     ok = True
@@ -104,6 +106,40 @@ def run_selftest(report_path: str | None = None) -> int:
         html_doc = render_html(result, project_name="자체 점검")
         check("Markdown 보고서", "## 판단" in md, f"{len(md)}자")
         check("HTML 보고서", html_doc.startswith("<!DOCTYPE html>"), f"{len(html_doc)}자")
+
+        spec = render_techspec(result, project_name="자체 점검")
+        check(
+            "TECHSPEC 기술 명세",
+            "## 3. MVP 범위" in spec and "#### P0-01" in spec,
+            f"{len(spec)}자",
+        )
+
+        # 엑셀은 외부 라이브러리(openpyxl)를 쓴다.
+        # 실행파일에 번들되지 않으면 여기서만 드러난다.
+        restored = AnalysisResult.from_dict(payload)
+        check("분석 결과 직렬화 왕복", restored.to_dict() == payload)
+
+        # ignore_cleanup_errors: 임시 파일을 백신·인덱서가 잡고 있으면 삭제가 실패한다.
+        # 점검 대상은 엑셀 생성이지 임시 폴더 정리가 아니다.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            xlsx_path = Path(tmp) / "selftest.xlsx"
+            save_workbook(str(xlsx_path), restored, project_name="자체 점검")
+            size = xlsx_path.stat().st_size if xlsx_path.exists() else 0
+            check("엑셀 생성", size > 0, f"{size:,}바이트")
+
+            from openpyxl import load_workbook
+
+            # Windows에서는 파일을 닫지 않으면 임시 폴더를 지울 수 없다.
+            check_wb = load_workbook(xlsx_path)
+            try:
+                sheets = check_wb.sheetnames
+            finally:
+                check_wb.close()
+            check(
+                "엑셀 시트 구성",
+                "MVP 백로그" in sheets and "평가 점수" in sheets,
+                f"{len(sheets)}개 시트",
+            )
 
         db = Database(url="sqlite:///:memory:")
         AppService(db)
