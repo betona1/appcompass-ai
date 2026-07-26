@@ -1,0 +1,31 @@
+{
+  "_comment": "TECHSPEC §15.3 고정 시나리오. 기대 결과: BROAD_TARGET 경고, TARGET_PIVOT 또는 HOLD, 초보 프로젝트 제작자 후보 포함, 일반 용어 퀴즈 차별성 위험",
+  "domain_code": "VIBEQUEST",
+  "raw_input": {
+    "app_name": "AI 용어 문제풀이 앱",
+    "raw_idea": "AI 용어를 문제로 풀면서 익히는 앱",
+    "target_user_raw": "바이브코딩에 관심 있는 모든 사람",
+    "problem_raw": "AI 용어를 모른다",
+    "solution_raw": "문제를 풀게 한다",
+    "revenue_model_raw": "",
+    "distribution_channel_raw": "",
+    "current_stage": "IDEA"
+  },
+  "structured_idea": {
+    "app_name": "AI 용어 문제풀이 앱",
+    "target_user": "바이브코딩에 관심 있는 모든 사람",
+    "payer": null,
+    "influencer": null,
+    "problem_situation": "AI 용어를 모른다",
+    "current_solution": null,
+    "current_solution_problem": null,
+    "core_action": "AI 용어 문제를 푼다",
+    "expected_result": "용어를 안다",
+    "first_success": null,
+    "retention_reason": null,
+    "revenue_model": null,
+    "distribution_channel": null,
+    "unknowns": [],
+    "warnings": []
+  }
+}

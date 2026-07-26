@@ -1,0 +1,31 @@
+{
+  "_comment": "CLAUDE.md §4.3 권장 타깃으로 다듬은 뒤의 입력. BROAD_TARGET이 사라지고 점수가 오르는지 확인하는 회귀 기준.",
+  "domain_code": "VIBEQUEST",
+  "raw_input": {
+    "app_name": "VibeQuest",
+    "raw_idea": "바이브코딩 중 막히는 용어를 실제 작업 상황과 연결된 3분 미션으로 해결하는 학습 게임",
+    "target_user_raw": "AI 코딩 도구로 처음 앱을 만들다가 용어 때문에 멈추는 비개발자",
+    "problem_raw": "AI가 준 답변에 모르는 용어가 나와 다음 단계를 정하지 못하고 작업이 중단된다",
+    "solution_raw": "막힌 용어를 실제 작업 상황형 3분 미션으로 학습시킨다",
+    "revenue_model_raw": "월 구독",
+    "distribution_channel_raw": "바이브코딩 오픈채팅과 커뮤니티",
+    "current_stage": "IDEA"
+  },
+  "structured_idea": {
+    "app_name": "VibeQuest",
+    "target_user": "AI 코딩 도구로 처음 앱이나 자동화 프로그램을 만들고 있지만, API·DB·Git·토큰·프롬프트·에이전트 같은 용어를 이해하지 못해 작업이 자주 중단되는 비개발자와 초보 개발자",
+    "payer": "사용자 본인",
+    "influencer": "같은 도구를 쓰는 커뮤니티 동료",
+    "problem_situation": "AI 코딩 도구로 프로젝트를 만들다가 AI 답변이나 오류 메시지에 모르는 용어가 나오면 매번 작업이 중단된다. 무엇을 다시 물어야 할지 몰라 헤매다가 그날 작업을 포기하는 일이 자주 반복된다.",
+    "current_solution": "검색하거나 AI에게 되묻고, 유튜브 강의를 몰아본다",
+    "current_solution_problem": "검색 결과는 실제 내 프로젝트 상황과 맞지 않고, 강의는 너무 길어 지금 막힌 지점을 바로 해결해주지 못한다. 시간이 오래 걸리고 결국 다시 막힌다.",
+    "core_action": "지금 막힌 프로젝트 단계를 고르고 그 단계의 실제 상황형 용어 미션 하나를 3분 안에 완료한다",
+    "expected_result": "학습 직후 막혔던 작업을 재개하는 비율이 50% 이상이 된다",
+    "first_success": "가입 없이 시작해 첫 3분 미션 하나를 완료하고 막힌 용어 하나를 해결한다",
+    "retention_reason": "매일 다음 프로젝트 단계의 용어 지도가 열리고 틀린 개념이 자동 복습으로 돌아온다",
+    "revenue_model": "월 구독. 무료는 하루 1미션, 유료는 전체 용어 지도와 복습",
+    "distribution_channel": "바이브코딩 오픈채팅, 커뮤니티, 유튜브 채널 제휴",
+    "unknowns": [],
+    "warnings": []
+  }
+}

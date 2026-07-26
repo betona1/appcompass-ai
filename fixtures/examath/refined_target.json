@@ -1,0 +1,31 @@
+{
+  "_comment": "CLAUDE.md §5.2 권장 타깃으로 다듬은 뒤의 입력. 사용자·구매자·영향자가 분리되고 학년·난관이 지정된 상태.",
+  "domain_code": "EXAMATH",
+  "raw_input": {
+    "app_name": "examath",
+    "raw_idea": "받아내림에서 막혀 수학을 회피하는 초등 2학년이 수를 직접 조작하며 개념을 이해하게 돕는 앱",
+    "target_user_raw": "받아내림을 피하는 초등 2학년",
+    "problem_raw": "받아내림 문제를 만나면 건너뛰거나 손을 놓는다",
+    "solution_raw": "구체물을 직접 쪼개고 옮기며 10 만들기를 익히게 한다",
+    "revenue_model_raw": "부모 월 구독",
+    "distribution_channel_raw": "학부모 커뮤니티, 교사 추천",
+    "current_stage": "IDEA"
+  },
+  "structured_idea": {
+    "app_name": "examath",
+    "target_user": "초등학교 2학년 중 두 자리 수에서 한 자리 수를 빼는 받아내림 문제를 만나면 건너뛰거나 손가락 세기에서 멈춰 더 이상 시도하지 않는 어린이",
+    "payer": "부모",
+    "influencer": "초등교사, 학원강사, 돌봄교사",
+    "problem_situation": "숙제나 학습지에서 받아내림이 있는 두 자리 뺄셈을 만나면 매일 같은 지점에서 멈춘다. 세로셈 절차만 외운 상태라 왜 십의 자리에서 빌려오는지 이해하지 못하고, 틀릴까 봐 아예 시도하지 않는 회피가 굳어진다.",
+    "current_solution": "학습지 반복 풀이, 부모가 직접 설명, 손가락 세기",
+    "current_solution_problem": "반복 풀이는 절차만 강화하고 개념을 만들지 못한다. 부모 설명은 매번 갈등으로 끝나고, 손가락 세기는 두 자리 수에서 한계에 부딪혀 아이가 더 빨리 포기한다.",
+    "core_action": "화면의 구체물을 직접 쪼개고 옮겨 10을 만들어 받아내림 한 문제를 스스로 해결한다",
+    "expected_result": "구체물 문제 성공 후 같은 유형의 숫자 문제 완료율이 40% 이상으로 오른다",
+    "first_success": "첫 3분 안에 구체물 조작으로 받아내림 한 문제를 스스로 맞힌다",
+    "retention_reason": "매일 3분 분량의 오늘의 뺄셈이 열리고 어제 틀린 오류 유형이 다음 날 다시 나온다",
+    "revenue_model": "부모 월 구독. 아이 화면에는 결제 요소를 노출하지 않는다",
+    "distribution_channel": "학부모 커뮤니티, 초등교사 추천, 돌봄교실 제휴",
+    "unknowns": [],
+    "warnings": []
+  }
+}

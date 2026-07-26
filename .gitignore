@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/
+
+*.spec
+
+# 로컬 도구 상태 (머신 경로·세션 타임스탬프 포함)
+.claude/settings.local.json
+docs/.bkit-memory.json
+docs/.pdca-status.json
+
+# 로컬 데이터와 개발용 산출물
+*.sqlite3
+tools/shots/
+tools/shots_native/
+release/
+
+# 참고 서적 요약본 — 시판 서적의 요약이라 공개 배포하지 않는다.
+# 출처는 README.md '참고 서적'에 명시. 로컬 참고용으로만 보관한다.
+앱기획_4권_통합요약본.html

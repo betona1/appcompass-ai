@@ -1,0 +1,31 @@
+{
+  "_comment": "TECHSPEC §15.3 고정 시나리오. 기대 결과: 사용자·구매자 분리 경고, 초등 2학년 받아내림 후보, 오류 유형 진단 제안, 구체물→그림→숫자 전환, 광고·가챠·실시간 랭킹 제외",
+  "domain_code": "EXAMATH",
+  "raw_input": {
+    "app_name": "뺄셈 친구",
+    "raw_idea": "수학을 처음 배우는 꼬맹이들이 뺄셈의 난관에서 수학을 멀리하지 않게 하는 앱",
+    "target_user_raw": "수학을 처음 배우는 꼬맹이들",
+    "problem_raw": "뺄셈에서 막혀 수학을 싫어하게 된다",
+    "solution_raw": "재미있게 뺄셈을 연습시킨다",
+    "revenue_model_raw": "",
+    "distribution_channel_raw": "",
+    "current_stage": "IDEA"
+  },
+  "structured_idea": {
+    "app_name": "뺄셈 친구",
+    "target_user": "수학을 처음 배우는 꼬맹이들",
+    "payer": null,
+    "influencer": null,
+    "problem_situation": "뺄셈에서 막혀 수학을 싫어하게 된다",
+    "current_solution": null,
+    "current_solution_problem": null,
+    "core_action": "뺄셈 문제를 푼다",
+    "expected_result": "뺄셈을 잘하게 된다",
+    "first_success": null,
+    "retention_reason": null,
+    "revenue_model": null,
+    "distribution_channel": null,
+    "unknowns": [],
+    "warnings": []
+  }
+}
