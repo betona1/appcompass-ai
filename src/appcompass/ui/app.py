@@ -255,10 +255,19 @@ def run_selftest(report_path: str | None = None) -> int:
             and not ({"score", "rank", "recommended"} & set(candidate_props)),
         )
         status = service.llm_status()
+        # available=False는 정상일 수 있다(키 없음). 하지만 sdk_installed=False는
+        # 번들링 실패이며 실행파일에서만 드러난다. 둘을 반드시 구분해야 한다.
+        check(
+            "anthropic SDK 번들",
+            status.sdk_installed,
+            "미설치 — AI 초안 기능이 통째로 동작하지 않습니다"
+            if not status.sdk_installed
+            else "",
+        )
         check(
             "AI 도우미 상태 조회",
             bool(status.message),
-            f"available={status.available}",
+            f"available={status.available} (키 없음은 정상)",
         )
 
         db.dispose()
