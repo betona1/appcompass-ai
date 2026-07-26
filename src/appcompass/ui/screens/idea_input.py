@@ -146,9 +146,10 @@ class IdeaInputScreen(ScreenBase):
             )
             return
 
-        # 이전 버전의 구조화 결과를 이어받아 편집 부담을 줄인다.
+        # 이전 버전의 구조화 결과를 이어받되, 이번에 고친 원문은 반드시 반영한다.
         previous = IdeaStructure.from_dict(ctx.version.structured_idea) if ctx.version else None
-        seed = _seed_structure(raw, previous)
+        previous_raw = ctx.version.raw_input if ctx.version else None
+        seed, updated_labels = _seed_structure(raw, previous, previous_raw)
 
         try:
             version = ctx.service.create_version(
@@ -158,25 +159,76 @@ class IdeaInputScreen(ScreenBase):
             self.banner.set_text(str(exc), "critical")
             return
 
-        self.status_message.emit(f"v{version.version_no} 저장됨")
+        if updated_labels:
+            message = (
+                f"v{version.version_no} 저장됨 — 고친 원문을 구조화 결과에 반영했습니다: "
+                + ", ".join(updated_labels)
+            )
+        elif previous is not None:
+            message = (
+                f"v{version.version_no} 저장됨 — 원문이 이전 버전과 같아 "
+                "구조화 결과를 그대로 이어받았습니다."
+            )
+        else:
+            message = f"v{version.version_no} 저장됨"
+        self.status_message.emit(message)
         self.data_changed.emit()
         self.request_screen.emit("structure")
 
 
-def _seed_structure(raw: RawIdeaInput, previous: IdeaStructure | None) -> IdeaStructure:
-    """구조화 화면의 시작값.
+# 원문 칸 → 구조화 칸 대응. (원문 필드, 구조화 필드, 화면 라벨, 빈 값을 None으로 둘지)
+_RAW_TO_STRUCTURED: tuple[tuple[str, str, str, bool], ...] = (
+    ("app_name", "app_name", "앱 이름", False),
+    ("target_user_raw", "target_user", "사용자", False),
+    ("problem_raw", "problem_situation", "문제 상황", False),
+    ("solution_raw", "core_action", "핵심 행동", False),
+    ("revenue_model_raw", "revenue_model", "수익 모델", True),
+    ("distribution_channel_raw", "distribution_channel", "유입 경로", True),
+)
+
+
+def _seed_structure(
+    raw: RawIdeaInput,
+    previous: IdeaStructure | None,
+    previous_raw: dict | None = None,
+) -> tuple[IdeaStructure, list[str]]:
+    """구조화 화면의 시작값과, 이번에 갱신된 항목 이름을 함께 돌려준다.
 
     자동 해석은 하지 않는다. 원문을 해당 칸에 옮겨 놓고 나머지는 사용자가 채운다.
-    """
-    if previous is not None:
-        from dataclasses import replace
 
-        return replace(previous, app_name=raw.app_name or previous.app_name)
-    return IdeaStructure(
-        app_name=raw.app_name,
-        target_user=raw.target_user_raw,
-        problem_situation=raw.problem_raw,
-        core_action=raw.solution_raw,
-        revenue_model=raw.revenue_model_raw or None,
-        distribution_channel=raw.distribution_channel_raw or None,
-    )
+    이전 버전이 있을 때가 까다롭다. 두 가지를 동시에 만족해야 한다.
+    - 사용자가 B화면에서 공들여 다듬은 값(구매자, 첫 성공 경험 등)은 유지되어야 한다.
+    - 그런데 A화면에서 원문을 고쳤다면 그건 반드시 반영되어야 한다.
+      반영하지 않으면 아이디어를 바꿔도 분석 결과가 그대로여서, 사용자에게는
+      "수정이 저장되지 않는" 것으로 보인다.
+
+    그래서 **이번에 원문이 바뀐 칸만** 구조화 값을 덮어쓰고 나머지는 그대로 둔다.
+    """
+    if previous is None:
+        return (
+            IdeaStructure(
+                app_name=raw.app_name,
+                target_user=raw.target_user_raw,
+                problem_situation=raw.problem_raw,
+                core_action=raw.solution_raw,
+                revenue_model=raw.revenue_model_raw or None,
+                distribution_channel=raw.distribution_channel_raw or None,
+            ),
+            [],
+        )
+
+    from dataclasses import replace
+
+    previous_raw = previous_raw or {}
+    changes: dict[str, str | None] = {}
+    labels: list[str] = []
+
+    for raw_key, struct_key, label, nullable in _RAW_TO_STRUCTURED:
+        new_value = (getattr(raw, raw_key) or "").strip()
+        old_value = (previous_raw.get(raw_key) or "").strip()
+        if new_value == old_value:
+            continue  # 안 고쳤으면 B화면에서 다듬은 값을 지키다
+        changes[struct_key] = (new_value or None) if nullable else new_value
+        labels.append(label)
+
+    return replace(previous, **changes), labels

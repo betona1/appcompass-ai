@@ -17,6 +17,7 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from appcompass.core.enums import DimensionCode, DomainCode, EvidenceType  # noqa: E402
+from appcompass.core.models import IdeaStructure  # noqa: E402
 from appcompass.ui.context import ScreenContext  # noqa: E402
 from appcompass.ui.main_window import MainWindow  # noqa: E402
 
@@ -133,6 +134,75 @@ def test_structure_screen_shows_warnings_live(window, service):
     )
     assert "BROAD_TARGET" in texts
     assert "NO_REAL_TASK_CONTEXT" in texts, "도메인 전용 경고가 표시되지 않았습니다."
+
+
+def test_edited_raw_input_reaches_structured_idea(window, service):
+    """A화면에서 고친 원문은 반드시 구조화 결과에 반영되어야 한다.
+
+    반영되지 않으면 아이디어를 바꿔도 분석 결과가 그대로여서
+    사용자에게는 '수정이 저장되지 않는' 것으로 보인다.
+    """
+    project = service.create_project("수정 반영", domain_code=DomainCode.VIBEQUEST)
+    window.ctx.project = project
+    window.ctx.version = None
+    screen = window.screens["idea"]
+    screen.refresh(window.ctx)
+
+    screen.raw_idea.setPlainText("원래 아이디어")
+    screen.target_raw.setPlainText("모든 사람")
+    screen.problem_raw.setPlainText("원래 문제 상황")
+    screen.solution_raw.setPlainText("원래 해결 방법")
+    screen._save()
+
+    window.ctx.version = service.latest_version(project.id)
+    v1 = window.ctx.version
+    assert v1.structured_idea["target_user"] == "모든 사람"
+
+    # B화면에서만 채우는 값 — 원문을 안 고쳤다면 다음 버전에도 살아남아야 한다.
+    service.update_version(
+        v1.id,
+        idea=IdeaStructure.from_dict({**v1.structured_idea, "payer": "회사 교육 담당자"}),
+    )
+    window.ctx.version = service.latest_version(project.id)
+
+    # A화면에서 타깃과 문제만 고친다.
+    screen.refresh(window.ctx)
+    screen.target_raw.setPlainText("AI 코딩 도구로 처음 앱을 만들다 용어에 막히는 비개발자")
+    screen.problem_raw.setPlainText("오류 메시지 용어를 몰라 작업이 중단된다")
+    screen._save()
+
+    v2 = service.latest_version(project.id)
+    assert v2.version_no == 2
+
+    # 고친 것은 반영된다
+    assert v2.structured_idea["target_user"].startswith("AI 코딩 도구로 처음")
+    assert v2.structured_idea["problem_situation"] == "오류 메시지 용어를 몰라 작업이 중단된다"
+    # 안 고친 원문에서 온 값은 유지된다
+    assert v2.structured_idea["core_action"] == "원래 해결 방법"
+    # B화면에서 다듬은 값도 유지된다
+    assert v2.structured_idea["payer"] == "회사 교육 담당자"
+
+
+def test_unchanged_raw_input_preserves_refined_structure(window, service):
+    """원문을 안 고쳤으면 B화면에서 다듬은 구조화 값을 덮어쓰지 않는다."""
+    from appcompass.ui.screens.idea_input import _seed_structure
+    from appcompass.core.models import RawIdeaInput
+
+    raw = RawIdeaInput(
+        app_name="앱", raw_idea="아이디어", target_user_raw="모든 사람",
+        problem_raw="문제", solution_raw="해결",
+    )
+    refined = IdeaStructure(
+        app_name="앱",
+        target_user="상황까지 적어 다듬은 타깃",   # B화면에서 고친 값
+        problem_situation="문제",
+        core_action="해결",
+        payer="부모",
+    )
+    seed, labels = _seed_structure(raw, refined, raw.to_dict())
+    assert labels == []
+    assert seed.target_user == "상황까지 적어 다듬은 타깃"
+    assert seed.payer == "부모"
 
 
 def test_versions_screen_requires_two_versions(window, service):

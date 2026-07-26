@@ -429,6 +429,10 @@ class MainWindow(QMainWindow):
 
     def edit_project_dialog(self) -> None:
         if self.ctx.project is None:
+            # 조용히 무시하면 사용자는 버튼이 고장 난 것으로 받아들인다.
+            QMessageBox.information(
+                self, "프로젝트 선택 필요", "왼쪽 목록에서 수정할 프로젝트를 먼저 선택하세요."
+            )
             return
         dialog = ProjectDialog(self, self.ctx.project)
         if dialog.exec() != QDialog.Accepted:
@@ -443,6 +447,9 @@ class MainWindow(QMainWindow):
 
     def archive_project(self) -> None:
         if self.ctx.project is None:
+            QMessageBox.information(
+                self, "프로젝트 선택 필요", "왼쪽 목록에서 보관할 프로젝트를 먼저 선택하세요."
+            )
             return
         answer = QMessageBox.question(
             self,
@@ -461,6 +468,9 @@ class MainWindow(QMainWindow):
     def delete_project(self) -> None:
         """파괴적 작업. 이름을 직접 입력해야 삭제된다."""
         if self.ctx.project is None:
+            QMessageBox.information(
+                self, "프로젝트 선택 필요", "왼쪽 목록에서 삭제할 프로젝트를 먼저 선택하세요."
+            )
             return
         name = self.ctx.project.name
         confirm = QDialog(self)

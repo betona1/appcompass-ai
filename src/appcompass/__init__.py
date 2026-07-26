@@ -10,4 +10,4 @@ core는 어떤 상황에서도 storage/services/ui를 import하지 않는다.
 이 규칙이 유지되어야 이후 웹 서비스로 이전할 때 core를 그대로 재사용할 수 있다.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
