@@ -166,7 +166,10 @@
 §9의 LLM 파이프라인 중 **MVP 기능 제안은 일부러 붙이지 않았습니다.**
 검증되지 않은 기능을 AI가 추가하면 "측정 없는 추천 금지"(CLAUDE.md §2.6)가 무너집니다.
 
-자세한 근거: [ADR-0003](../docs/decisions/ADR-0003-llm-as-draft-only.md)
+자세한 근거: [ADR-0003 — LLM은 초안만 만들고, 판정에는 관여하지 않는다](https://github.com/betona1/appcompass-ai/blob/main/docs/decisions/ADR-0003-llm-as-draft-only.md)
+
+사용법은 [사용 설명서 6장 — AI 초안 쓰기](https://github.com/betona1/appcompass-ai/blob/main/docs/MANUAL.md#6-ai-초안-쓰기-선택),
+지금 없는 기능은 [9장 — 아직 없는 것](https://github.com/betona1/appcompass-ai/blob/main/docs/MANUAL.md#9-아직-없는-것)에 정리해 두었습니다.
 
 ---
 

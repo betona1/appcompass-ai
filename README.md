@@ -13,6 +13,7 @@
 > API 키가 없어도 모든 기능이 그대로 동작합니다 ([ADR-0003](docs/decisions/ADR-0003-llm-as-draft-only.md)).
 
 📖 **[사용 설명서 (MANUAL.md)](docs/MANUAL.md)** — 처음 쓰신다면 여기부터
+　　[도움말 — 막혔을 때 어디를 보나](docs/MANUAL.md#8-도움말--막혔을-때-어디를-보나) · [아직 없는 것](docs/MANUAL.md#9-아직-없는-것)
 
 ---
 
@@ -35,21 +36,24 @@ python run_app.py
 Python 3.11 이상이 필요합니다. 데이터는 `%APPDATA%\AppCompass\appcompass.sqlite3`에 저장됩니다.
 다른 위치를 쓰려면 환경변수 `APPCOMPASS_DB_URL`을 지정하세요.
 
-**AI 초안(선택 기능)** 을 쓰려면 Anthropic API 키가 필요합니다. 앱의 `AI 도우미` 탭에서
-넣거나 환경변수로 지정하세요. 키가 없어도 나머지 기능은 모두 정상 동작합니다.
+```bash
+# 예: 프로젝트 폴더에 DB 두기
+set APPCOMPASS_DB_URL=sqlite:///./appcompass.sqlite3
+python run_app.py
+```
+
+### AI 초안 (선택 기능)
+
+Anthropic API 키가 있으면 `B. 구조화 검토`에서 초안을 받을 수 있습니다.
+앱의 `AI 도우미` 탭에서 넣거나 환경변수로 지정하세요.
 
 ```bash
 set ANTHROPIC_API_KEY=sk-ant-...
 set APPCOMPASS_LLM_MODEL=claude-opus-5   # 선택 (생략하면 이 값)
 ```
 
-키는 데이터베이스에 저장되지 않습니다.
-
-```bash
-# 예: 프로젝트 폴더에 DB 두기
-set APPCOMPASS_DB_URL=sqlite:///./appcompass.sqlite3
-python run_app.py
-```
+**키가 없어도 나머지 기능은 모두 정상 동작합니다.** 키는 데이터베이스에 저장되지 않으므로
+기획서를 내보내거나 백업해도 함께 나가지 않습니다.
 
 ### 실행파일 직접 빌드
 
@@ -62,7 +66,7 @@ python tools/build_exe.py
 ## 테스트
 
 ```bash
-pytest -q                # 208개
+pytest -q                # 252개
 ```
 
 UI 스모크 테스트는 offscreen 모드로 돌아가므로 창이 뜨지 않습니다.
@@ -202,10 +206,13 @@ appcompass/
 ## 아직 없는 것
 
 
-- PDF 내보내기
+- PDF 내보내기 (HTML로 내보낸 뒤 브라우저에서 인쇄하면 됩니다)
 - 앱 이벤트 수집 SDK, 퍼널 대시보드
 - LLM 기반 MVP 기능 제안 (`MvpPlannerPort`는 일부러 구현하지 않았습니다 — [ADR-0003](docs/decisions/ADR-0003-llm-as-draft-only.md))
 - 다중 사용자·조직 권한 (구조는 이미 있으나 데스크톱에서는 로컬 사용자 1명)
+
+일부러 넣지 않은 것과 알려진 한계까지 정리한 전체 목록은
+**[사용 설명서 9장 — 아직 없는 것](docs/MANUAL.md#9-아직-없는-것)** 에 있습니다.
 
 ---
 
@@ -241,7 +248,7 @@ class MyDomain:
 
 | 문서 | 내용 |
 |---|---|
-| [docs/MANUAL.md](docs/MANUAL.md) | **사용 설명서** — 10분 따라하기, 화면별 사용법, FAQ |
+| [docs/MANUAL.md](docs/MANUAL.md) | **사용 설명서** — 10분 따라하기, 화면별 사용법, [도움말](docs/MANUAL.md#8-도움말--막혔을-때-어디를-보나), [아직 없는 것](docs/MANUAL.md#9-아직-없는-것), FAQ |
 | [CLAUDE.md](CLAUDE.md) | 제품 원칙과 도메인 정의 (최상위 지침) |
 | [TECHSPEC.md](TECHSPEC.md) | 기술 명세. 부록 A에 1차 구현 현황 |
 | [docs/decisions/](docs/decisions/) | ADR — 왜 데스크톱인지, LLM을 어디까지만 쓰는지 |
