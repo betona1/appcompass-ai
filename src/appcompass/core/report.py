@@ -68,9 +68,17 @@ def render_markdown(
     add(f"| 판정 엔진 | {m.engine} {m.engine_version} |")
     add(f"| 정책 버전 | {m.policy_version} |")
     add(f"| 스키마 버전 | {m.schema_version} |")
-    add(f"| 모델 | {m.model_name or '사용 안 함 (규칙 엔진 전용)'} |")
+    add(f"| 초안 도움 모델 | {m.model_name or '사용 안 함 (사람이 직접 작성)'} |")
     add(f"| 프롬프트 버전 | {m.prompt_version or '-'} |")
     add("")
+    if m.model_name:
+        # 모델 이름이 표에 있으면 "AI가 판정했다"로 읽힐 수 있다. 명시적으로 부정한다.
+        add(
+            f"> `{m.model_name}` 은(는) 구조화 **초안**을 만드는 데만 쓰였고, "
+            "사용자가 채택한 칸만 반영되었습니다. "
+            f"점수·근거 신뢰도·피벗 판단은 전부 {m.engine} {m.engine_version}가 "
+            "결정론적 규칙으로 계산한 것이며 모델이 관여하지 않았습니다.\n"
+        )
 
     # 판단과 다음 행동을 점수보다 먼저 놓는다.
     add("## 판단\n")

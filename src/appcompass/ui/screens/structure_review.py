@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -30,6 +31,8 @@ from ...core.rules import dedupe_warnings, detect_warnings, missing_required_fie
 from ...core.domains.registry import get_domain
 from ...services.app_service import ServiceError
 from ..context import ScreenContext
+from ..draft_dialog import StructureDraftDialog
+from ..workers import LlmDraftWorker
 from ..widgets import (
     Banner,
     EmptyState,
@@ -69,6 +72,7 @@ class StructureReviewScreen(ScreenBase):
         super().__init__()
         self._ctx: ScreenContext | None = None
         self._editors: dict[str, object] = {}
+        self._draft_worker: LlmDraftWorker | None = None
 
         self.empty = EmptyState(
             "저장된 버전이 없습니다",
@@ -87,6 +91,18 @@ class StructureReviewScreen(ScreenBase):
 
         self.required_banner = Banner("", "critical")
         left_layout.addWidget(self.required_banner)
+
+        # AI 초안은 편집 폼 **위**에 둔다. 12칸을 마주한 직후가 막히는 지점이라,
+        # 다 채우고 나서 발견하면 도움이 되지 않는다.
+        assist_row = QHBoxLayout()
+        self.draft_button = QPushButton("AI로 초안 채우기")
+        self.draft_button.clicked.connect(self._request_draft)
+        assist_row.addWidget(self.draft_button)
+        self.draft_hint = QLabel("")
+        self.draft_hint.setObjectName("Hint")
+        self.draft_hint.setWordWrap(True)
+        assist_row.addWidget(self.draft_hint, 1)
+        left_layout.addLayout(assist_row)
 
         box = QGroupBox("구조화 결과")
         form = QFormLayout(box)
@@ -212,6 +228,7 @@ class StructureReviewScreen(ScreenBase):
             self.banner.set_text(
                 "아직 승인되지 않았습니다. 경고를 확인하고 다듬은 뒤 승인하세요.", "info"
             )
+        self._refresh_draft_controls()
         self._validate()
 
     # -- 검증 -------------------------------------------------------------
@@ -310,6 +327,117 @@ class StructureReviewScreen(ScreenBase):
                 "판단이 HOLD로 나올 가능성이 높습니다.",
                 "critical",
             )
+
+    # -- AI 초안 ----------------------------------------------------------
+    def _refresh_draft_controls(self) -> None:
+        """버튼 상태와 안내 문구를 지금 상황에 맞춘다.
+
+        비활성 버튼만 보여 주면 사용자는 왜 안 되는지 모른다. 항상 이유를 함께 적는다.
+        """
+        ctx = self._ctx
+        if ctx is None or ctx.version is None:
+            self.draft_button.setEnabled(False)
+            return
+
+        status = ctx.service.llm_status()
+        approved = ctx.version.structure_approved
+        running = self._draft_worker is not None and self._draft_worker.isRunning()
+
+        self.draft_button.setEnabled(status.available and not approved and not running)
+        if running:
+            self.draft_hint.setText("초안을 만드는 중입니다… (20초 정도 걸릴 수 있습니다)")
+        elif approved:
+            self.draft_hint.setText(
+                "승인된 버전에는 초안을 적용할 수 없습니다. 새 버전을 만든 뒤 사용하세요."
+            )
+        elif not status.available:
+            self.draft_hint.setText(
+                f"AI 초안이 꺼져 있습니다 — {status.message} "
+                "왼쪽 'AI 도우미' 화면에서 설정할 수 있습니다."
+            )
+        else:
+            self.draft_hint.setText(
+                "원문을 읽고 아래 칸의 초안을 제안합니다. "
+                "칸마다 채택 여부를 직접 고르며, 점수와 판단에는 관여하지 않습니다."
+            )
+
+        accepted = ctx.version.llm_accepted_fields
+        if accepted:
+            from ..draft_dialog import FIELD_LABELS
+
+            names = ", ".join(FIELD_LABELS.get(k, k) for k in accepted)
+            self.draft_hint.setText(
+                self.draft_hint.text()
+                + f"\n이 버전에서 AI 초안을 채택한 칸: {names}"
+            )
+
+    def _request_draft(self) -> None:
+        ctx = self._ctx
+        if ctx is None or ctx.version is None:
+            return
+        version_id = ctx.version.id
+        service = ctx.service
+
+        self._draft_worker = LlmDraftWorker(
+            lambda: service.draft_structure(version_id), self
+        )
+        self._draft_worker.finished_ok.connect(self._show_draft)
+        self._draft_worker.failed.connect(self._draft_failed)
+        self._draft_worker.finished.connect(self._refresh_draft_controls)
+        self._draft_worker.start()
+        self._refresh_draft_controls()
+        self.status_message.emit("AI 초안을 만드는 중입니다…")
+
+    def _draft_failed(self, message: str, next_action: str) -> None:
+        self.banner.set_text(
+            message + (f"\n다음에 할 것: {next_action}" if next_action else ""),
+            "critical",
+        )
+        self.status_message.emit("AI 초안 실패")
+
+    def _show_draft(self, draft) -> None:
+        ctx = self._ctx
+        if ctx is None or ctx.version is None:
+            return
+
+        current = {
+            key: self._editors[key].toPlainText().strip() for key, _l, _t, _h in _FIELDS
+        }
+        dialog = StructureDraftDialog(draft, current, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.status_message.emit("초안을 쓰지 않았습니다.")
+            return
+
+        accepted = dialog.accepted_fields()
+        if not accepted:
+            self.status_message.emit("선택한 칸이 없어 아무것도 바뀌지 않았습니다.")
+            return
+
+        # 편집 폼에만 채운다. 저장은 사용자가 '임시 저장'이나 '승인'을 누를 때 한다.
+        for key in accepted:
+            editor = self._editors.get(key)
+            if editor is None:
+                continue
+            editor.blockSignals(True)
+            editor.setPlainText(draft.fields.get(key, ""))
+            editor.blockSignals(False)
+
+        idea, assist = draft.apply_to(self._current_idea(), accepted)
+        try:
+            ctx.service.update_version(ctx.version.id, idea=idea, llm_assist=assist)
+        except ServiceError as exc:
+            self.banner.set_text(str(exc), "critical")
+            return
+
+        self.banner.set_text(
+            f"{len(accepted)}개 칸을 초안으로 채웠습니다. "
+            "내용이 맞는지 직접 확인하고 고친 뒤 승인하세요. "
+            "AI가 추측한 문장이 그대로 남으면 진단도 그 추측 위에서 돌아갑니다.",
+            "info",
+        )
+        self.status_message.emit(f"AI 초안 {len(accepted)}칸 적용")
+        self.data_changed.emit()
+        self._validate()
 
     # -- 동작 -------------------------------------------------------------
     def _save(self) -> None:

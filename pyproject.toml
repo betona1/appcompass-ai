@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "appcompass"
-version = "0.6.0"
-description = "AppCompass AI - 앱 기획 의사결정 시스템 (Phase 0+1, PySide6 desktop)"
+version = "0.7.0"
+description = "AppCompass AI - 앱 기획 의사결정 시스템 (PySide6 desktop, 규칙 엔진 + LLM 초안)"
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.6",
     "SQLAlchemy>=2.0",
     "jsonschema>=4.20",
     "openpyxl>=3.1",
+    "anthropic>=0.69",
 ]
 
 [project.optional-dependencies]

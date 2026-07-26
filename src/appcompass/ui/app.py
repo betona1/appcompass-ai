@@ -230,6 +230,37 @@ def run_selftest(report_path: str | None = None) -> int:
             decided.approval_status == str(ApprovalStatus.APPROVED)
             and decided.approved_at is not None,
         )
+        # LLM 초안 — 키 없이도 여기까지는 확인할 수 있다.
+        # 실행파일에 초안 스키마가 빠지면 'AI로 초안 채우기'를 누르는 순간에만
+        # 드러나므로, 스키마 로딩과 경계를 여기서 미리 확인한다.
+        from ..core.schema import (
+            IDEA_STRUCTURE_DRAFT_SCHEMA,
+            TARGET_CANDIDATES_DRAFT_SCHEMA,
+            load_schema,
+        )
+        from ..llm.service import DRAFTABLE_FIELDS
+
+        draft_schema = load_schema(IDEA_STRUCTURE_DRAFT_SCHEMA)
+        target_schema = load_schema(TARGET_CANDIDATES_DRAFT_SCHEMA)
+        check(
+            "LLM 초안 스키마 동봉",
+            set(DRAFTABLE_FIELDS)
+            == set(draft_schema["properties"]["fields"]["required"]),
+            f"{len(DRAFTABLE_FIELDS)}칸",
+        )
+        candidate_props = target_schema["properties"]["candidates"]["items"]["properties"]
+        check(
+            "LLM 출력에 판정 필드 없음",
+            draft_schema["additionalProperties"] is False
+            and not ({"score", "rank", "recommended"} & set(candidate_props)),
+        )
+        status = service.llm_status()
+        check(
+            "AI 도우미 상태 조회",
+            bool(status.message),
+            f"available={status.available}",
+        )
+
         db.dispose()
         check("DB 스키마 생성", True)
 

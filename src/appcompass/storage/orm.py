@@ -90,6 +90,9 @@ class ProjectVersion(Base):
     raw_input: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     structured_idea: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     structure_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: LLM이 이 버전의 구조화 초안을 도왔다는 기록 (core.models.LlmAssist).
+    #: 표기 전용이다. 점수·신뢰도·피벗 계산에는 절대 쓰이지 않는다 (ADR-0002).
+    llm_assist: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     change_reason: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

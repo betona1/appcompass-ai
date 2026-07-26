@@ -26,6 +26,7 @@ from ..widgets import (
     hint,
     scrollable,
 )
+from ..workers import LlmDraftWorker
 from .base import ScreenBase
 
 
@@ -36,6 +37,7 @@ class TargetsScreen(ScreenBase):
     def __init__(self) -> None:
         super().__init__()
         self._ctx: ScreenContext | None = None
+        self._worker: LlmDraftWorker | None = None
 
         self.empty = EmptyState(
             "분석 결과가 없습니다",
@@ -53,6 +55,24 @@ class TargetsScreen(ScreenBase):
         self.cards_layout = QVBoxLayout(self.cards_host)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.layout_.addWidget(self.cards_host)
+
+        # --- AI가 제안하는 추가 후보 ---
+        # 규칙 엔진 후보를 대체하지 않는다. 아래에 따로 쌓아 '초안'임을 분명히 한다.
+        self.layout_.addWidget(h2("AI가 제안하는 다른 후보"))
+        row = QHBoxLayout()
+        self.draft_button = QPushButton("다른 후보 제안받기")
+        self.draft_button.clicked.connect(self._request_draft)
+        row.addWidget(self.draft_button)
+        self.draft_hint = QLabel("")
+        self.draft_hint.setObjectName("Hint")
+        self.draft_hint.setWordWrap(True)
+        row.addWidget(self.draft_hint, 1)
+        self.layout_.addLayout(row)
+
+        self.llm_host = QWidget()
+        self.llm_layout = QVBoxLayout(self.llm_host)
+        self.llm_layout.setContentsMargins(0, 0, 0, 0)
+        self.layout_.addWidget(self.llm_host)
         self.layout_.addStretch(1)
 
         outer = QVBoxLayout(self)
@@ -68,6 +88,8 @@ class TargetsScreen(ScreenBase):
         self.scroll.setVisible(result is not None)
         if result is None:
             return
+
+        self._refresh_draft_controls()
 
         targets = result["targets"]
         recommended = targets["recommended_candidate_index"]
@@ -88,6 +110,70 @@ class TargetsScreen(ScreenBase):
             self.cards_layout.addWidget(
                 _CandidateCard(i + 1, c, is_recommended=(recommended == i))
             )
+
+    # -- AI 초안 ----------------------------------------------------------
+    def _refresh_draft_controls(self) -> None:
+        ctx = self._ctx
+        if ctx is None or ctx.version is None:
+            self.draft_button.setEnabled(False)
+            return
+
+        status = ctx.service.llm_status()
+        running = self._worker is not None and self._worker.isRunning()
+        self.draft_button.setEnabled(status.available and not running)
+        if running:
+            self.draft_hint.setText("후보를 만드는 중입니다…")
+        elif not status.available:
+            self.draft_hint.setText(
+                f"AI 초안이 꺼져 있습니다 — {status.message} "
+                "'AI 도우미' 화면에서 설정할 수 있습니다."
+            )
+        else:
+            self.draft_hint.setText(
+                "위 후보는 규칙 엔진이 만든 것입니다. AI에게 다른 각도의 후보를 물어봅니다. "
+                "여기 나오는 후보는 저장되지 않으며, 쓸 만하면 'B. 구조화 검토'에 직접 옮겨 적으세요."
+            )
+
+    def _request_draft(self) -> None:
+        ctx = self._ctx
+        if ctx is None or ctx.version is None:
+            return
+        version_id = ctx.version.id
+        service = ctx.service
+
+        self._worker = LlmDraftWorker(lambda: service.draft_targets(version_id), self)
+        self._worker.finished_ok.connect(self._show_draft)
+        self._worker.failed.connect(self._draft_failed)
+        self._worker.finished.connect(self._refresh_draft_controls)
+        self._worker.start()
+        self._refresh_draft_controls()
+        self.status_message.emit("AI 후보를 만드는 중입니다…")
+
+    def _draft_failed(self, message: str, next_action: str) -> None:
+        clear_layout(self.llm_layout)
+        text = message + (f"\n다음에 할 것: {next_action}" if next_action else "")
+        banner = Banner(text, "critical")
+        self.llm_layout.addWidget(banner)
+        self.status_message.emit("AI 후보 생성 실패")
+
+    def _show_draft(self, draft) -> None:
+        clear_layout(self.llm_layout)
+        if not draft.candidates:
+            self.llm_layout.addWidget(hint("AI가 제안한 후보가 없습니다."))
+            return
+
+        self.llm_layout.addWidget(
+            Banner(
+                f"{draft.assist.model} 이(가) 제안한 초안 {len(draft.candidates)}건입니다. "
+                "저장되지 않았고, 순위도 매기지 않았습니다. "
+                "각 후보의 '검증 질문'을 실제 사용자에게 물어본 뒤에야 근거가 됩니다.",
+                "info",
+            )
+        )
+        for i, candidate in enumerate(draft.candidates):
+            data = candidate.to_dict()
+            data["name"] = f"[AI 초안] {data['name']}"
+            self.llm_layout.addWidget(_CandidateCard(i + 1, data, is_recommended=False))
 
 
 class _CandidateCard(QGroupBox):

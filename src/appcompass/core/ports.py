@@ -1,13 +1,14 @@
 """외부 추론기(LLM) 연결 지점.
 
 CLAUDE.md §7.3 "LLM 호출과 규칙 엔진을 분리".
-Phase 1에서는 어떤 구현체도 LLM을 쓰지 않는다. 인터페이스만 열어 둔다.
+core는 이 프로토콜만 알고, 구현체는 `appcompass.llm` 패키지에 있다.
+core가 llm을 import하지 않으므로 LLM을 통째로 제거해도 분석 엔진은 그대로 돈다.
 
-LLM을 붙일 때 지켜야 할 것:
-- 사용자 입력을 시스템 명령으로 취급하지 않는다.
-- 결과는 반드시 JSON Schema 검증을 통과해야 저장된다 (schemas/ 참고).
-- 점수·신뢰도·피벗 판정은 절대 LLM에 위임하지 않는다.
-- 모델·프롬프트 버전을 AnalysisMeta에 기록한다.
+구현체가 지켜야 할 것 (llm/service.py에서 강제된다):
+- 사용자 입력을 시스템 명령으로 취급하지 않는다 → llm/prompts.py의 데이터 태그
+- 결과는 반드시 JSON Schema 검증을 통과한다 → schemas/*_draft-*.json, 1회 복구 후 폐기
+- 점수·신뢰도·피벗 판정은 절대 LLM에 위임하지 않는다 → 반환 타입에 그 필드가 없다
+- 모델·프롬프트 버전을 AnalysisMeta에 기록한다 → core.models.LlmAssist
 """
 
 from __future__ import annotations

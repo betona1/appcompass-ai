@@ -240,3 +240,7 @@ class AuditAction(StrEnum):
     PIVOT_REJECTED = "PIVOT_REJECTED"
     POLICY_UPDATED = "POLICY_UPDATED"
     REPORT_EXPORTED = "REPORT_EXPORTED"
+    # LLM은 초안만 만든다. 요청과 채택을 따로 남겨야
+    # "AI가 제안했지만 사람이 안 썼다"를 나중에 구분할 수 있다.
+    LLM_DRAFT_REQUESTED = "LLM_DRAFT_REQUESTED"
+    LLM_DRAFT_APPLIED = "LLM_DRAFT_APPLIED"

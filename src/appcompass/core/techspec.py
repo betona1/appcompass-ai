@@ -77,6 +77,9 @@ def render_techspec(
     add(f"| 명세 형식 버전 | {TECHSPEC_VERSION} |")
     add(f"| 판정 엔진 | {meta.engine} {meta.engine_version} |")
     add(f"| 평가 정책 | {meta.policy_version} |")
+    add(
+        f"| 초안 도움 모델 | {meta.model_name or '사용 안 함 (사람이 직접 작성)'} |"
+    )
     add(f"| 기획 진단 총점 | {diag.total_score:.1f} / 100 |")
     add(f"| 근거 신뢰도 | {diag.overall_confidence:.2f} |")
     add(f"| 기획 판단 | {pivot.decision} |")

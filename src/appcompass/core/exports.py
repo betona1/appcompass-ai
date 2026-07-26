@@ -104,7 +104,13 @@ def _sheet_summary(wb, result, project_name, version_no) -> None:
         ("판정 엔진", f"{meta.engine} {meta.engine_version}"),
         ("평가 정책", meta.policy_version),
         ("스키마 버전", meta.schema_version),
-        ("모델", meta.model_name or "사용 안 함 (규칙 엔진 전용)"),
+        ("초안 도움 모델", meta.model_name or "사용 안 함 (사람이 직접 작성)"),
+        (
+            "모델의 역할",
+            "구조화 초안만. 점수·신뢰도·피벗은 규칙 엔진이 계산"
+            if meta.model_name
+            else "-",
+        ),
         ("", ""),
         ("총점", round(diag.total_score, 1)),
         ("근거 신뢰도", round(diag.overall_confidence, 2)),

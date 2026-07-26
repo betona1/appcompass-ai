@@ -16,6 +16,8 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 ANALYSIS_RESULT_SCHEMA = "analysis_result-0.1.0.json"
+IDEA_STRUCTURE_DRAFT_SCHEMA = "idea_structure_draft-0.1.0.json"
+TARGET_CANDIDATES_DRAFT_SCHEMA = "target_candidates_draft-0.1.0.json"
 
 _HERE = Path(__file__).resolve()
 
@@ -71,12 +73,34 @@ def _validator(schema_name: str) -> Draft202012Validator:
     return Draft202012Validator(schema)
 
 
-def validate_analysis_result(payload: dict[str, Any]) -> None:
-    """실패 시 SchemaValidationError를 던진다. 성공 시 조용히 반환한다."""
-    validator = _validator(ANALYSIS_RESULT_SCHEMA)
+def validate_payload(schema_name: str, payload: Any) -> None:
+    """임의의 스키마로 payload를 검증한다. 실패 시 SchemaValidationError.
+
+    LLM 응답도 반드시 이 함수를 통과해야 한다 (CLAUDE.md §10.3).
+    '검증 없이 저장'하는 경로를 코드에 만들지 않기 위해, 저장 직전이 아니라
+    어댑터가 값을 만들어 내는 지점에서 검증한다.
+    """
+    validator = _validator(schema_name)
     errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.path))
     if errors:
         raise SchemaValidationError(
-            ANALYSIS_RESULT_SCHEMA,
-            [f"{'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in errors],
+            schema_name,
+            [
+                f"{'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}"
+                for e in errors
+            ],
         )
+
+
+def load_schema(schema_name: str) -> dict[str, Any]:
+    """스키마 원문을 돌려준다.
+
+    LLM에게 구조화 출력(output_config.format)을 요구할 때 같은 파일을 그대로 넘긴다.
+    프롬프트에 스키마를 다시 적으면 검증용 스키마와 요청용 스키마가 어긋난다.
+    """
+    return json.loads(_schema_path(schema_name).read_text(encoding="utf-8"))
+
+
+def validate_analysis_result(payload: dict[str, Any]) -> None:
+    """실패 시 SchemaValidationError를 던진다. 성공 시 조용히 반환한다."""
+    validate_payload(ANALYSIS_RESULT_SCHEMA, payload)

@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from .migrations import apply_additive_migrations
 from .orm import Base
 
 ENV_DB_URL = "APPCOMPASS_DB_URL"
@@ -39,7 +40,13 @@ class Database:
         )
 
     def create_all(self) -> None:
+        """테이블 생성 + 기존 DB에 빠진 컬럼 보충.
+
+        순서가 중요하다. 새 설치는 create_all에서 완전한 테이블이 만들어지고,
+        기존 설치는 두 번째 줄에서 컬럼만 더해진다. 사용자 데이터는 건드리지 않는다.
+        """
         Base.metadata.create_all(self.engine)
+        self.migrations_applied = apply_additive_migrations(self.engine)
 
     def session(self) -> Session:
         return self._session_factory()

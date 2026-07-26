@@ -43,6 +43,7 @@ from ..core.models import (
     FeatureImplementation,
     HypothesisVerdict,
     IdeaStructure,
+    LlmAssist,
     RawIdeaInput,
     feature_key,
 )
@@ -67,6 +68,7 @@ from ..storage.repository import Repository
 from .dto import (
     AuditLogDTO,
     EvidenceDTO,
+    LLMStatusDTO,
     PivotDecisionDTO,
     ProjectDTO,
     ReportDTO,
@@ -247,6 +249,7 @@ class AppService:
         idea: IdeaStructure,
         change_reason: str = "",
         approved: bool = False,
+        llm_assist: LlmAssist | None = None,
     ) -> VersionDTO:
         with self.db.transaction() as s:
             repo = Repository(s)
@@ -258,6 +261,7 @@ class AppService:
                 structured_idea=idea.to_dict(),
                 structure_approved=approved,
                 change_reason=change_reason.strip(),
+                llm_assist=llm_assist.to_dict() if llm_assist else None,
                 created_by=self.actor_id,
             )
             project.latest_version_id = version.id
@@ -282,6 +286,7 @@ class AppService:
         raw: RawIdeaInput | None = None,
         idea: IdeaStructure | None = None,
         change_reason: str | None = None,
+        llm_assist: LlmAssist | None = None,
     ) -> VersionDTO:
         """승인 전 버전의 내용을 수정한다. 승인된 버전은 수정하지 않고 새 버전을 만든다."""
         with self.db.transaction() as s:
@@ -300,7 +305,38 @@ class AppService:
                 version.structured_idea = idea.to_dict()
             if change_reason is not None:
                 version.change_reason = change_reason.strip()
+            if llm_assist is not None:
+                # 채택 기록은 누적한다. 두 번째 초안에서 다른 칸을 받아들였다면
+                # 그 칸도 'AI가 도운 칸'이므로 앞의 기록을 지우면 안 된다.
+                version.llm_assist = self._merge_assist(version.llm_assist, llm_assist)
+                repo.audit(
+                    self.actor_id,
+                    AuditAction.LLM_DRAFT_APPLIED,
+                    "ProjectVersion",
+                    version.id,
+                    after=llm_assist.to_dict(),
+                )
+                repo.track(
+                    "llm_draft_applied",
+                    version.project_id,
+                    {
+                        "task": llm_assist.task,
+                        "model": llm_assist.model,
+                        "accepted": len(llm_assist.accepted_fields),
+                    },
+                )
             return self._version_dto(version)
+
+    @staticmethod
+    def _merge_assist(
+        stored: dict[str, Any] | None, incoming: LlmAssist
+    ) -> dict[str, Any]:
+        payload = incoming.to_dict()
+        previous = (stored or {}).get("accepted_fields") or []
+        payload["accepted_fields"] = list(
+            dict.fromkeys([*previous, *incoming.accepted_fields])
+        )
+        return payload
 
     def approve_structure(self, version_id: str) -> VersionDTO:
         with self.db.transaction() as s:
@@ -331,6 +367,126 @@ class AppService:
             self._require_project(repo, project_id)
             version = repo.latest_version(project_id)
             return self._version_dto(version) if version else None
+
+    # ==================================================================
+    # AI 초안 (CLAUDE.md §10.1 허용 범위 안에서만)
+    # ==================================================================
+    def llm_status(self) -> LLMStatusDTO:
+        """설정 화면과 버튼 활성화 판단에 쓰는 현재 상태.
+
+        키를 읽어 오지만 DTO에는 마스킹된 값만 담는다.
+        """
+        from ..llm.config import load_config
+
+        config = load_config()
+        try:
+            import anthropic  # noqa: F401
+
+            sdk = True
+        except ImportError:
+            sdk = False
+
+        if not sdk:
+            message = "anthropic 패키지가 설치되어 있지 않습니다."
+        elif not config.is_configured:
+            message = "API 키가 설정되지 않았습니다. AI 초안 기능이 꺼져 있습니다."
+        else:
+            message = f"사용 가능 — {config.model}"
+
+        return LLMStatusDTO(
+            available=sdk and config.is_configured,
+            sdk_installed=sdk,
+            key_configured=config.is_configured,
+            key_source=config.source,
+            masked_key=config.masked_key,
+            model=config.model,
+            effort=config.effort,
+            message=message,
+        )
+
+    def draft_structure(self, version_id: str):
+        """원문 → 구조화 초안. 아무것도 저장하지 않는다.
+
+        반환된 초안은 사용자가 화면에서 칸별로 채택해야만 값이 된다.
+        """
+        from ..llm.service import build_assistant
+
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            version = repo.get_version(version_id)
+            if version is None:
+                raise ServiceError("버전을 찾을 수 없습니다.")
+            project = self._require_project(repo, version.project_id)
+            raw = RawIdeaInput.from_dict(version.raw_input)
+            domain_label = str(project.domain_code)
+            project_id = project.id
+
+            # 빈 입력에 요금을 쓰지 않는다. 호출도, 감사 기록도 남기지 않는다.
+            if not (raw.raw_idea.strip() or raw.problem_raw.strip()):
+                raise ServiceError(
+                    "원문이 비어 있어 초안을 만들 수 없습니다. "
+                    "'A. 아이디어 입력'에 아이디어나 문제 상황을 먼저 적으세요."
+                )
+
+            repo.audit(
+                self.actor_id,
+                AuditAction.LLM_DRAFT_REQUESTED,
+                "ProjectVersion",
+                version.id,
+                after={"task": "IDEA_STRUCTURE"},
+            )
+
+        draft = build_assistant().draft_structure(raw, domain_label)
+        with self.db.transaction() as s:
+            Repository(s).track(
+                "llm_draft_created",
+                project_id,
+                {"task": "IDEA_STRUCTURE", "filled": len(draft.filled_fields())},
+            )
+        return draft
+
+    def draft_targets(self, version_id: str):
+        """구조화 결과 → 추가 타깃 후보 초안. 저장하지 않는다.
+
+        규칙 엔진이 만든 후보를 대체하지 않는다. 비교용으로 옆에 놓을 뿐이다.
+        """
+        from ..llm.service import build_assistant
+
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            version = repo.get_version(version_id)
+            if version is None:
+                raise ServiceError("버전을 찾을 수 없습니다.")
+            project = self._require_project(repo, version.project_id)
+            idea = IdeaStructure.from_dict(version.structured_idea)
+            domain_label = str(project.domain_code)
+            project_id = project.id
+
+            if not idea.target_user.strip() and not idea.problem_situation.strip():
+                raise ServiceError(
+                    "사용자와 문제 상황이 비어 있어 후보를 제안할 수 없습니다. "
+                    "'B. 구조화 검토'에서 먼저 채우세요."
+                )
+
+            repo.audit(
+                self.actor_id,
+                AuditAction.LLM_DRAFT_REQUESTED,
+                "ProjectVersion",
+                version.id,
+                after={"task": "TARGET_CANDIDATES"},
+            )
+
+        draft = build_assistant().draft_targets(idea, None, domain_label)
+        with self.db.transaction() as s:
+            Repository(s).track(
+                "llm_draft_created",
+                project_id,
+                {
+                    "task": "TARGET_CANDIDATES",
+                    "count": len(draft.candidates),
+                },
+            )
+        return draft
 
     # ==================================================================
     # 근거
@@ -455,6 +611,8 @@ class AppService:
             domain_code = DomainCode(project.domain_code)
             version_no = version.version_no
             project_name = project.name
+            # 표기용으로만 넘어간다. 판정에는 영향을 주지 않는다 (ADR-0002).
+            assist = LlmAssist.from_dict(version.llm_assist)
 
             try:
                 result = run_analysis(
@@ -463,6 +621,7 @@ class AppService:
                     policy=policy,
                     evidence=evidence,
                     now=datetime.now(timezone.utc),
+                    assist=assist,
                 )
                 payload = result.to_dict()
                 validate_analysis_result(payload)
@@ -1285,6 +1444,7 @@ class AppService:
             structured_idea=dict(v.structured_idea or {}),
             structure_approved=v.structure_approved,
             change_reason=v.change_reason,
+            llm_assist=dict(v.llm_assist) if v.llm_assist else None,
             created_at=v.created_at,
         )
 

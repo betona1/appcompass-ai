@@ -19,6 +19,7 @@ venv/
 .claude/settings.local.json
 docs/.bkit-memory.json
 docs/.pdca-status.json
+docs/.pdca-snapshots/
 
 # 로컬 데이터와 개발용 산출물
 *.sqlite3

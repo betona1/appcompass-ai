@@ -49,6 +49,9 @@ def run_pyinstaller() -> None:
         # 문서도 함께 넣어 실행파일만 받은 사용자가 매뉴얼을 볼 수 있게 한다.
         "--add-data",
         f"{ROOT / 'docs' / 'MANUAL.md'}{sep}docs",
+        # anthropic SDK는 pydantic 모델과 데이터 파일을 동적으로 찾는다.
+        # 기본 분석기로는 빠지고, 그러면 'AI로 초안 채우기'를 누를 때만 드러난다.
+        "--collect-all", "anthropic",
         "--add-data",
         f"{ROOT / 'LICENSE'}{sep}.",
         # PySide6에서 쓰지 않는 무거운 모듈을 제외해 용량을 줄인다.
@@ -62,6 +65,8 @@ def run_pyinstaller() -> None:
         "--exclude-module", "matplotlib",
         "--exclude-module", "numpy",
         "--exclude-module", "pytest",
+        # anthropic은 최상위에서 lib.vertex / lib.bedrock 을 import한다.
+        # 이 앱은 두 백엔드를 쓰지 않지만 제외하면 `import anthropic` 자체가 깨진다.
         str(ROOT / "run_app.py"),
     ]
     print(">", " ".join(args[2:]))

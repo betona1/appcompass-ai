@@ -457,6 +457,143 @@ def test_clear_form_resets_everything(window, service):
     assert not any(b.isChecked() for b in screen._contradict_boxes.values())
 
 
+# ==========================================================================
+# AI 초안 (LLM)
+# ==========================================================================
+
+
+def test_ai_button_is_off_and_explains_why_without_a_key(
+    window, service, monkeypatch, tmp_path
+):
+    """비활성 버튼만 보여 주면 사용자는 왜 안 되는지 모른다."""
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    project = service.create_project("AI 꺼짐", domain_code=DomainCode.VIBEQUEST)
+    service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        fixture_idea("vibequest/refined_target.json"),
+    )
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+    assert screen.draft_button.isEnabled() is False
+    assert "AI 도우미" in screen.draft_hint.text()
+
+
+def test_approved_version_cannot_take_a_draft(window, service, monkeypatch):
+    """승인된 버전은 잠긴다. AI 초안도 예외가 아니다."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    project = service.create_project("승인 후", domain_code=DomainCode.VIBEQUEST)
+    version = service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        fixture_idea("vibequest/refined_target.json"),
+    )
+    service.approve_structure(version.id)
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+    assert screen.draft_button.isEnabled() is False
+    assert "새 버전" in screen.draft_hint.text()
+
+
+def test_draft_dialog_starts_with_nothing_checked(window, service, qapp):
+    """기본 체크는 해제. 읽지 않고 '전부 적용'을 누르는 흐름을 만들지 않는다."""
+    from appcompass.core.models import LlmAssist
+    from appcompass.llm.service import DraftNote, StructureDraft
+    from appcompass.ui.draft_dialog import StructureDraftDialog
+
+    draft = StructureDraft(
+        fields={"target_user": "AI가 제안한 사용자", "payer": "부모"},
+        unknowns=("부모가 실제로 결제할지",),
+        notes=(
+            DraftNote("target_user", "FROM_RAW_TEXT", "원문에 있음"),
+            DraftNote("payer", "INFERRED", "교육 앱이라 추측"),
+        ),
+        assist=LlmAssist("anthropic", "claude-opus-5", "p-1", "IDEA_STRUCTURE"),
+    )
+    dialog = StructureDraftDialog(draft, {"target_user": "사람이 쓴 값"})
+    try:
+        assert dialog.accepted_fields() == ()
+
+        dialog._select_evidenced()
+        assert dialog.accepted_fields() == ("target_user",), (
+            "추측(INFERRED)한 칸이 '원문에 있는 칸만 선택'에 끼면 안 된다."
+        )
+
+        dialog._set_all(True)
+        assert set(dialog.accepted_fields()) == {"target_user", "payer"}
+    finally:
+        dialog.close()
+
+
+def test_applying_a_draft_only_fills_chosen_fields(window, service, monkeypatch):
+    """초안 적용은 고른 칸만 바꾸고, 나머지는 사용자가 쓴 그대로 둔다."""
+    from appcompass.core.models import LlmAssist
+    from appcompass.llm.service import DraftNote, StructureDraft
+    from appcompass.ui.draft_dialog import StructureDraftDialog
+
+    project = service.create_project("초안 적용", domain_code=DomainCode.VIBEQUEST)
+    service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        IdeaStructure(problem_situation="사람이 쓴 문제 상황"),
+    )
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+
+    draft = StructureDraft(
+        fields={
+            "target_user": "AI가 제안한 사용자",
+            "problem_situation": "AI가 제안한 문제 상황",
+        },
+        unknowns=(),
+        notes=(DraftNote("target_user", "FROM_RAW_TEXT", ""),),
+        assist=LlmAssist("anthropic", "claude-opus-5", "p-1", "IDEA_STRUCTURE"),
+    )
+
+    # target_user만 채택한 상태로 확인 버튼을 누른 것처럼 만든다.
+    from PySide6.QtWidgets import QDialog
+
+    monkeypatch.setattr(
+        StructureDraftDialog, "exec", lambda self: QDialog.DialogCode.Accepted
+    )
+    monkeypatch.setattr(
+        StructureDraftDialog, "accepted_fields", lambda self: ("target_user",)
+    )
+    screen._show_draft(draft)
+
+    assert screen._editors["target_user"].toPlainText() == "AI가 제안한 사용자"
+    assert screen._editors["problem_situation"].toPlainText() == "사람이 쓴 문제 상황"
+
+    saved = service.latest_version(project.id)
+    assert saved.structured_idea["target_user"] == "AI가 제안한 사용자"
+    assert saved.llm_accepted_fields == ("target_user",)
+
+
+def test_llm_settings_screen_states_what_ai_does_not_do(window, service):
+    screen = window.screens["llm"]
+    screen.refresh(ScreenContext(service=service))
+
+    from PySide6.QtWidgets import QLabel
+
+    text = " ".join(w.text() for w in screen.findChildren(QLabel))
+    assert "점수를 계산하지 않습니다" in text
+    assert "피벗" in text
+    assert "근거를 만들지 않습니다" in text
+
+
 def test_versions_screen_requires_two_versions(window, service):
     project = service.create_project("버전 스모크")
     service.create_version(

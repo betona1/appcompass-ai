@@ -1472,7 +1472,8 @@ LLM은 문장을 만들고,
 >
 > 본문 §3의 권장 스택(Django + React)과 다르게 1차는 **PySide6 데스크톱**으로 구현했다.
 > 사유와 재검토 조건은 `docs/decisions/ADR-0001-desktop-first-pyside6.md` 참고.
-> LLM을 쓰지 않는 사유는 `docs/decisions/ADR-0002-rule-engine-before-llm.md` 참고.
+> LLM을 Phase 1에서 쓰지 않은 사유는 `docs/decisions/ADR-0002-rule-engine-before-llm.md`,
+> 이후 **초안 생성에 한정해** 붙인 사유와 경계는 `docs/decisions/ADR-0003-llm-as-draft-only.md` 참고.
 
 ## A.1 실제 구현 스택
 
@@ -1484,9 +1485,12 @@ LLM은 문장을 만들고,
 | 저장소 | PostgreSQL | SQLite + SQLAlchemy 2.0 | 연결 문자열 교체 |
 | 비동기 | Celery + Redis | QThread 워커 | Celery로 교체 |
 | 스키마 검증 | JSON Schema | `jsonschema` + `schemas/` | **그대로 재사용** |
-| 테스트 | pytest | pytest (88개) | 확장 |
+| LLM | LLM Provider Adapter | `llm/` (Anthropic SDK) | **그대로 재사용** |
+| 테스트 | pytest | pytest (252개) | 확장 |
 
-의존 방향은 `ui → services → storage → core` 한 방향이다. `core`는 나머지를 import하지 않는다.
+의존 방향은 `ui → services → storage → core`, 그리고 `llm → core` 한 방향이다.
+`core`는 나머지를 import하지 않으며, 이 규칙은 AST 검사 테스트로 강제된다
+(`test_core_never_imports_the_llm_package`). `llm/`을 삭제해도 분석 엔진은 그대로 동작한다.
 
 ## A.2 기능 구현 상태
 
@@ -1570,12 +1574,35 @@ audit_logs / analytics_events
 본문 §12 "최소 필수 테스트" 항목 중 미구현은 다음 뿐이다.
 - 보고서 버전 추적: 부분(체크섬·정책 버전은 검증, 별도 버전 번호 체계는 없음)
 
-## A.7 다음 단계
+## A.7 LLM 연동 범위 (v0.7.0)
 
-Phase 0~4 완료. 남은 것은 Phase 5(앱 이벤트 수집, 퍼널 대시보드, 실제 데이터 기반 자동 재평가)다.
+§9의 LLM 파이프라인 중 **구조화 초안과 타깃 후보 초안만** 구현했다.
+근거와 경계는 `docs/decisions/ADR-0003-llm-as-draft-only.md`.
+
+| §9.2 작업 | 구현 | 비고 |
+|---|---|---|
+| 아이디어 구조화 | 완료 | `StructurerPort` → `llm/service.py`. 화면 B에서 칸별 채택 |
+| 언노운 생성 | 완료 | 구조화 초안에 포함 |
+| 타깃 후보 생성 | 완료 | `TargetCandidatePort`. 저장하지 않는 초안 |
+| MVP 초안 | **미구현** | 도메인 모듈의 `constrain_mvp()`가 담당. 의도적으로 붙이지 않음 |
+| 보고서 자연어 작성 | 미구현 | 템플릿 유지. 문장 품질 불만이 제기된 적 없음 |
+| 점수·신뢰도·피벗 | **영구 제외** | ADR-0002 / ADR-0003 |
+
+경계를 지키는 장치:
+
+1. 출력 JSON Schema (`schemas/*_draft-*.json`)가 `additionalProperties: false`.
+   모델이 점수·피벗을 끼워 넣으면 검증에서 떨어진다.
+2. `run_analysis(assist=...)`는 표기용이며 분기에 쓰지 않는다.
+   초안을 쓴 버전과 안 쓴 버전의 판정이 동일함을 회귀 테스트로 고정했다.
+3. 스키마 실패 시 1회 복구 프롬프트 → 재실패 시 초안 폐기 (§10.3).
+4. 사용자 원문은 시스템 프롬프트에 들어가지 않고 데이터 태그 안에만 들어간다.
+5. API 키는 DB에 저장하지 않는다 (환경변수 또는 `.env`).
+
+## A.8 다음 단계
+
+Phase 0~4 완료 + LLM 초안 연동.
+남은 것은 Phase 5(앱 이벤트 수집, 퍼널 대시보드, 실제 데이터 기반 자동 재평가)다.
 
 도메인 콘텐츠 진단은 `core/content.py`의 계약과 각 도메인 모듈의
 `content_spec()` / `diagnose_content()`로 구현했다.
 examath는 뺄셈 오답에서 절차를 역추적하고, VibeQuest는 문항 유형을 분류한다.
-LLM은 `core/ports.py`의 Protocol 구현체로 붙이며, 붙이더라도
-점수·신뢰도·피벗 판정은 규칙 엔진이 계속 담당한다.

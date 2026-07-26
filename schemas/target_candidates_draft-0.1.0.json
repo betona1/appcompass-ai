@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appcompass.local/schemas/target_candidates_draft-0.1.0.json",
+  "title": "TargetCandidatesDraft",
+  "description": "LLM이 제안한 타깃 후보 초안. 추천 순위·점수는 포함하지 않는다 — 어느 후보가 나은지는 규칙 엔진과 사람이 정한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["candidates"],
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "user",
+          "payer",
+          "influencer",
+          "trigger_situation",
+          "problem",
+          "current_alternative",
+          "why_promising",
+          "risks",
+          "validation_questions"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "user": {
+            "description": "상황 + 문제 + 현재 행동 + 중단 원인을 포함한다. 나이·직업만으로 정의하지 않는다 (CLAUDE.md §2.2).",
+            "type": "string"
+          },
+          "payer": { "type": "string" },
+          "influencer": { "type": "string" },
+          "trigger_situation": { "type": "string" },
+          "problem": { "type": "string" },
+          "current_alternative": { "type": "string" },
+          "why_promising": {
+            "description": "가설이지 근거가 아니다. 시장 규모·점유율 같은 수치는 출처 없이 쓰지 않는다 (CLAUDE.md §10.2).",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "risks": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "validation_questions": {
+            "description": "이 후보가 실재하는지 사용자에게 직접 물어볼 질문.",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

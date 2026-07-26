@@ -40,6 +40,13 @@ class VersionDTO:
     structure_approved: bool
     change_reason: str
     created_at: datetime
+    #: LLM이 이 버전의 어느 칸을 도왔는지 (core.models.LlmAssist.to_dict()).
+    #: None이면 사람이 전부 직접 썼다는 뜻이다.
+    llm_assist: dict[str, Any] | None = None
+
+    @property
+    def llm_accepted_fields(self) -> tuple[str, ...]:
+        return tuple((self.llm_assist or {}).get("accepted_fields") or ())
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +125,23 @@ class AuditLogDTO:
     object_type: str
     object_id: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class LLMStatusDTO:
+    """AI 초안 기능이 지금 쓸 수 있는 상태인지.
+
+    키 원본은 절대 담지 않는다. 화면에 보여줄 마스킹 값만 갖는다.
+    """
+
+    available: bool
+    sdk_installed: bool
+    key_configured: bool
+    key_source: str
+    masked_key: str
+    model: str
+    effort: str
+    message: str
 
 
 @dataclass(frozen=True, slots=True)

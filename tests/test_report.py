@@ -48,7 +48,8 @@ def test_report_records_versions():
     assert "RULE_ENGINE" in md
     assert EvaluationPolicy().version in md
     assert "analysis-result-0.1.0" in md
-    assert "규칙 엔진 전용" in md
+    # LLM을 쓰지 않았다면 그 사실이 보고서에 드러나야 한다.
+    assert "사람이 직접 작성" in md
 
 
 def test_judgment_appears_before_score():

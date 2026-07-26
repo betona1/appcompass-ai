@@ -42,6 +42,7 @@ from .screens.evidence import EvidenceScreen
 from .screens.experiments import ExperimentsScreen
 from .screens.guide import GuideScreen
 from .screens.idea_input import IdeaInputScreen
+from .screens.llm_settings import LlmSettingsScreen
 from .screens.mvp import MvpScreen
 from .screens.policy import PolicyScreen
 from .screens.report import ReportScreen
@@ -92,13 +93,17 @@ TUTORIAL_HTML = """
 생각만으로 확정된 판단이 나오지 않게 하려는 것입니다.
 대상자 5명에게 물어보고 근거로 등록하면 풀립니다.</p>
 
-<p><b>3. AI가 아니라 규칙 엔진입니다.</b><br>
+<p><b>3. 판단하는 것은 AI가 아니라 규칙 엔진입니다.</b><br>
 점수·신뢰도·판단이 전부 정해진 규칙으로 계산됩니다.
-같은 입력이면 언제 실행해도 같은 결과가 나옵니다. 왜 그 점수인지도 항상 표시됩니다.</p>
+같은 입력이면 언제 실행해도 같은 결과가 나옵니다. 왜 그 점수인지도 항상 표시됩니다.<br>
+AI는 <b>구조화 초안</b>만 도와줍니다 — 12칸을 채우기 막막하면
+'B. 구조화 검토'의 <b>AI로 초안 채우기</b>를 쓰세요. 칸마다 쓸지 말지 직접 고릅니다.
+쓰지 않아도 모든 기능이 그대로 동작합니다.</p>
 
 <h3>막히면</h3>
 <ul>
 <li>승인 버튼이 잠김 → 빨간 별표(*) 필수 항목이 비어 있습니다</li>
+<li>12칸이 막막함 → 'B. 구조화 검토'의 <b>AI로 초안 채우기</b> (키는 'AI 도우미' 탭에서)</li>
 <li>승인한 뒤 수정이 안 됨 → 'B. 구조화 검토'의 <b>새 버전 만들어 수정하기</b></li>
 <li>계속 HOLD → '근거' 탭에서 <b>예시로 양식 채우기</b>로 형식을 보고 실제 내용으로 등록</li>
 <li>이 안내는 <b>도움말 → 처음 사용 안내</b> (F1)에서 다시 볼 수 있습니다</li>
@@ -225,6 +230,7 @@ class MainWindow(QMainWindow):
             "report": ReportScreen(),
             "versions": VersionsScreen(),
             "policy": PolicyScreen(),
+            "llm": LlmSettingsScreen(),
         }
         for key, screen in self.screens.items():
             screen.data_changed.connect(self.reload_current)

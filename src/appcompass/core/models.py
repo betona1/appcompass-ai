@@ -34,6 +34,7 @@ __all__ = [
     "TargetCandidateSet",
     "MvpPlan",
     "PivotResult",
+    "LlmAssist",
     "AnalysisMeta",
     "AnalysisResult",
     "EvidenceExample",
@@ -374,6 +375,49 @@ class PivotResult:
 # ---------------------------------------------------------------------------
 # 분석 결과 묶음
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LlmAssist:
+    """LLM이 이 버전의 어느 칸을 채웠는지에 대한 기록 (CLAUDE.md §7.3).
+
+    LLM은 초안만 만든다. 사용자가 실제로 채택한 칸만 accepted_fields에 남는다.
+    초안을 받아 놓고 전부 직접 고쳐 썼다면 accepted_fields는 비어 있고,
+    그 버전은 사실상 사람이 쓴 것이므로 보고서에도 그렇게 표기된다.
+
+    점수·신뢰도·피벗에는 이 기록이 어떤 영향도 주지 않는다. 표기 전용이다.
+    """
+
+    provider: str
+    model: str
+    prompt_version: str
+    task: str  # "IDEA_STRUCTURE" | "TARGET_CANDIDATES"
+    accepted_fields: tuple[str, ...] = ()
+    created_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "prompt_version": self.prompt_version,
+            "task": self.task,
+            "accepted_fields": list(self.accepted_fields),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> LlmAssist | None:
+        if not data:
+            return None
+        created = data.get("created_at")
+        return cls(
+            provider=data.get("provider", ""),
+            model=data.get("model", ""),
+            prompt_version=data.get("prompt_version", ""),
+            task=data.get("task", ""),
+            accepted_fields=tuple(data.get("accepted_fields") or ()),
+            created_at=datetime.fromisoformat(created) if created else None,
+        )
 
 
 @dataclass(frozen=True, slots=True)

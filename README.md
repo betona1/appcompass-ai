@@ -2,11 +2,15 @@
 
 앱 아이디어를 구조화하고 진단해 **유지·수정·피벗**을 판단하는 기획 의사결정 시스템.
 
-현재 단계: **Phase 0~4 완료 (PySide6 데스크톱, 규칙 엔진 전용)**
+현재 단계: **Phase 0~4 완료 + LLM 초안 연동 (PySide6 데스크톱)**
 
 > **AI가 정답을 결정하지 않습니다.**
 > 이 도구는 문제를 구조화하고, 부족한 근거를 찾고, 검증할 실험을 제안합니다.
 > 최종 결정은 사람이 승인합니다.
+>
+> LLM은 **구조화 초안과 타깃 후보 초안만** 만듭니다.
+> 점수·근거 신뢰도·피벗 판단은 전부 결정론적 규칙 엔진이 계산하며, 모델이 관여하지 않습니다.
+> API 키가 없어도 모든 기능이 그대로 동작합니다 ([ADR-0003](docs/decisions/ADR-0003-llm-as-draft-only.md)).
 
 📖 **[사용 설명서 (MANUAL.md)](docs/MANUAL.md)** — 처음 쓰신다면 여기부터
 
@@ -30,6 +34,16 @@ python run_app.py
 
 Python 3.11 이상이 필요합니다. 데이터는 `%APPDATA%\AppCompass\appcompass.sqlite3`에 저장됩니다.
 다른 위치를 쓰려면 환경변수 `APPCOMPASS_DB_URL`을 지정하세요.
+
+**AI 초안(선택 기능)** 을 쓰려면 Anthropic API 키가 필요합니다. 앱의 `AI 도우미` 탭에서
+넣거나 환경변수로 지정하세요. 키가 없어도 나머지 기능은 모두 정상 동작합니다.
+
+```bash
+set ANTHROPIC_API_KEY=sk-ant-...
+set APPCOMPASS_LLM_MODEL=claude-opus-5   # 선택 (생략하면 이 값)
+```
+
+키는 데이터베이스에 저장되지 않습니다.
 
 ```bash
 # 예: 프로젝트 폴더에 DB 두기
@@ -86,16 +100,25 @@ appcompass/
 │  ├─ nextstep.py      다음 할 일 판정
 │  ├─ content.py       도메인 콘텐츠 진단 계약
 │  ├─ exports.py       작업용 엑셀
-│  ├─ ports.py         LLM 연결 지점 (지금은 비어 있음)
+│  ├─ ports.py         LLM 연결 지점 (Protocol만. 구현은 llm/)
 │  └─ domains/         VibeQuest / examath 도메인 모듈
+├─ llm/         LLM 어댑터 — 초안만 만든다 (선택 기능)
+│  ├─ config.py       키 로드/저장 (DB에 저장하지 않음)
+│  ├─ prompts.py      프롬프트 조립 (원문은 데이터 태그 안에만)
+│  ├─ client.py       Anthropic 호출 (Transport 프로토콜)
+│  ├─ service.py      스키마 검증 + 1회 복구 → 초안
+│  └─ errors.py       실패 종류별 '다음에 할 것'
 ├─ storage/     SQLAlchemy 2.0 ORM + 리포지토리
 ├─ services/    AppService — UI와 (미래의) REST API 공통 진입점
 └─ ui/          PySide6 화면
 ```
 
-**의존 방향은 한쪽입니다.** `ui → services → storage → core`.
+**의존 방향은 한쪽입니다.** `ui → services → storage → core`, 그리고 `llm → core`.
 `core`는 위 어느 것도 import하지 않습니다. 웹으로 옮길 때 `ui`만 버리고
 같은 `AppService`를 Django/FastAPI 뷰 뒤에 두면 됩니다.
+
+이 규칙은 문서가 아니라 테스트로 지켜집니다 (`test_core_never_imports_the_llm_package`).
+`llm/` 폴더를 통째로 지워도 분석 엔진은 그대로 동작합니다.
 
 ---
 
@@ -162,6 +185,13 @@ appcompass/
 - **근거가 없으면 항목 신뢰도는 0.20을 넘지 못하고**, 전체 신뢰도가 임계치 미만이면 판단은 `HOLD`입니다.
   다만 "근거가 충분했다면 무엇이었을지"(`would_be_decision`)를 함께 보여줍니다.
 - **AI는 근거를 만들지 않습니다.** 근거는 사람이 등록한 것만 존재합니다.
+- **LLM은 초안만 만듭니다.** 출력 스키마가 `additionalProperties: false`라 모델이
+  점수·피벗을 끼워 넣으면 검증에서 떨어집니다. 초안을 쓴 버전과 안 쓴 버전의
+  판정이 완전히 같음을 회귀 테스트로 고정했습니다.
+- **초안은 승인 없이 어떤 칸도 덮어쓰지 않습니다.** 검토 창은 전부 체크 해제 상태로 열리고,
+  AI가 추측한 칸은 따로 표시됩니다. 채택한 칸 목록이 버전에 기록되어 보고서에 나옵니다.
+- **API 키는 DB에 저장하지 않습니다.** 환경변수 또는 `.env`에서만 읽으므로
+  기획서를 내보내거나 백업해도 키가 함께 나가지 않습니다.
 - 모든 분석 결과는 저장 전에 **JSON Schema 검증**을 통과해야 합니다 (`schemas/`).
   실패하면 상태가 `FAILED_SCHEMA`가 되고 그 결과로는 점수도 피벗도 만들지 않습니다.
 - 모든 결과와 보고서에 **엔진·정책·스키마 버전**이 기록됩니다.
@@ -174,7 +204,7 @@ appcompass/
 
 - PDF 내보내기
 - 앱 이벤트 수집 SDK, 퍼널 대시보드
-- LLM 연동 (`core/ports.py`에 인터페이스만 열려 있음)
+- LLM 기반 MVP 기능 제안 (`MvpPlannerPort`는 일부러 구현하지 않았습니다 — [ADR-0003](docs/decisions/ADR-0003-llm-as-draft-only.md))
 - 다중 사용자·조직 권한 (구조는 이미 있으나 데스크톱에서는 로컬 사용자 1명)
 
 ---
@@ -214,7 +244,7 @@ class MyDomain:
 | [docs/MANUAL.md](docs/MANUAL.md) | **사용 설명서** — 10분 따라하기, 화면별 사용법, FAQ |
 | [CLAUDE.md](CLAUDE.md) | 제품 원칙과 도메인 정의 (최상위 지침) |
 | [TECHSPEC.md](TECHSPEC.md) | 기술 명세. 부록 A에 1차 구현 현황 |
-| [docs/decisions/](docs/decisions/) | ADR — 왜 데스크톱인지, 왜 LLM을 안 쓰는지 |
+| [docs/decisions/](docs/decisions/) | ADR — 왜 데스크톱인지, LLM을 어디까지만 쓰는지 |
 
 ---
 

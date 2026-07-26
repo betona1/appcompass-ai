@@ -23,6 +23,7 @@ from .models import (
     DiagnosisWarning,
     EvidenceItem,
     IdeaStructure,
+    LlmAssist,
 )
 from .pivot import decide_pivot
 from .planner import build_mvp_plan, build_target_candidates
@@ -42,11 +43,16 @@ def run_analysis(
     policy: EvaluationPolicy | None = None,
     evidence: Sequence[EvidenceItem] = (),
     now: datetime | None = None,
+    assist: LlmAssist | None = None,
 ) -> AnalysisResult:
     """전체 분석을 실행한다.
 
     순수 함수에 가깝다. now를 주입하면 완전히 결정론적이며,
     회귀 테스트에서 동일 입력 → 동일 출력을 검증할 수 있다.
+
+    assist는 '이 버전의 구조화 초안을 LLM이 도왔다'는 표기용 기록이다.
+    분기에 쓰지 않는다 — assist가 있든 없든 점수·신뢰도·피벗은 완전히 동일하다.
+    (ADR-0002, 회귀 테스트 test_llm_assist_does_not_change_judgement)
     """
 
     policy = policy or EvaluationPolicy()
@@ -108,9 +114,11 @@ def run_analysis(
         policy_version=policy.version,
         schema_version=SCHEMA_VERSION,
         domain_code=DomainCode(domain_code),
-        model_provider=None,
-        model_name=None,
-        prompt_version=None,
+        # 엔진은 언제나 RULE_ENGINE이다. 아래 세 칸은 '초안을 누가 도왔는가'일 뿐,
+        # 판정 주체가 아니다. 보고서에도 그렇게 구분해서 적는다.
+        model_provider=assist.provider if assist else None,
+        model_name=assist.model if assist else None,
+        prompt_version=assist.prompt_version if assist else None,
         created_at=created_at,
     )
 
