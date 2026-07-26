@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -37,6 +38,7 @@ from .context import ScreenContext
 from .screens.base import ScreenBase
 from .screens.diagnosis import DiagnosisScreen
 from .screens.evidence import EvidenceScreen
+from .screens.guide import GuideScreen
 from .screens.idea_input import IdeaInputScreen
 from .screens.mvp import MvpScreen
 from .screens.policy import PolicyScreen
@@ -47,6 +49,59 @@ from .screens.versions import VersionsScreen
 from .theme import decision_label
 from .widgets import h2, hint
 from .workers import AnalysisWorker
+
+TUTORIAL_HTML = """
+<h2>처음이시면 이것만 기억하세요</h2>
+<p style="font-size:15px">
+<b>① 다음 할 일</b> 탭만 보시면 됩니다. 지금 해야 할 일 하나를 알려주고
+그 화면으로 데려다줍니다. 나머지 탭은 그때그때 안내받으면 됩니다.
+</p>
+
+<h3>이 도구가 하는 일</h3>
+<p>
+아이디어를 구조화하고, <b>가장 약한 부분과 그 이유</b>를 찾고,
+<b>무엇을 검증해야 하는지</b> 알려줍니다. 그리고 유지할지·고칠지·방향을 틀지 판단합니다.
+</p>
+<p>
+<b>하지 않는 일:</b> 사업성을 판정하지 않습니다. 근거를 만들어내지 않습니다.
+대신 결정하지 않습니다. 모든 판단에 "사람 승인 필요"가 붙습니다.
+</p>
+
+<h3>전체 흐름 (8단계)</h3>
+<ol>
+<li><b>프로젝트 만들기</b> — 도메인을 고르면 그 분야 규칙이 자동 적용됩니다</li>
+<li><b>아이디어 적기</b> — 다듬지 않아도 됩니다. 원문은 절대 수정되지 않습니다</li>
+<li><b>구조화 채우기</b> — 빨간 별표(*)가 필수입니다. 오른쪽 경고를 보며 고칩니다</li>
+<li><b>승인하고 분석</b> — 승인하면 그 버전이 잠기고 기록으로 남습니다</li>
+<li><b>치명 문제 해소</b> — 빨간 '치명' 경고부터 하나씩</li>
+<li><b>근거 등록</b> — 실제로 물어본 것만. 이게 없으면 판단이 확정되지 않습니다</li>
+<li><b>판단 확정</b> — 유지 / 보완 / 피벗</li>
+<li><b>기획 마무리</b> — 기술 명세(TECHSPEC)를 내보내 개발 시작</li>
+</ol>
+
+<h3>꼭 알아두실 세 가지</h3>
+
+<p><b>1. 점수가 낮다고 아이디어가 나쁜 게 아닙니다.</b><br>
+점수는 "지금 기획서에 적힌 내용이 얼마나 검증 가능한 형태인가"를 나타냅니다.
+좋은 아이디어도 처음 적으면 낮게 나옵니다.</p>
+
+<p><b>2. '판단 보류(HOLD)'는 오류가 아닙니다.</b><br>
+등록된 근거가 없으면 신뢰도가 0.20을 넘지 못해 판단을 확정하지 않습니다.
+생각만으로 확정된 판단이 나오지 않게 하려는 것입니다.
+대상자 5명에게 물어보고 근거로 등록하면 풀립니다.</p>
+
+<p><b>3. AI가 아니라 규칙 엔진입니다.</b><br>
+점수·신뢰도·판단이 전부 정해진 규칙으로 계산됩니다.
+같은 입력이면 언제 실행해도 같은 결과가 나옵니다. 왜 그 점수인지도 항상 표시됩니다.</p>
+
+<h3>막히면</h3>
+<ul>
+<li>승인 버튼이 잠김 → 빨간 별표(*) 필수 항목이 비어 있습니다</li>
+<li>승인한 뒤 수정이 안 됨 → 'B. 구조화 검토'의 <b>새 버전 만들어 수정하기</b></li>
+<li>계속 HOLD → '근거' 탭에서 <b>예시로 양식 채우기</b>로 형식을 보고 실제 내용으로 등록</li>
+<li>이 안내는 <b>도움말 → 처음 사용 안내</b> (F1)에서 다시 볼 수 있습니다</li>
+</ul>
+"""
 
 STAGE_LABELS: dict[ProjectStage, str] = {
     ProjectStage.IDEA: "아이디어",
@@ -156,6 +211,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.screens: dict[str, ScreenBase] = {
+            "guide": GuideScreen(),
             "idea": IdeaInputScreen(),
             "structure": StructureReviewScreen(),
             "evidence": EvidenceScreen(),
@@ -202,6 +258,11 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(events_action)
 
         help_menu = self.menuBar().addMenu("도움말")
+        tutorial_action = QAction("처음 사용 안내", self)
+        tutorial_action.setShortcut("F1")
+        tutorial_action.triggered.connect(self.show_tutorial)
+        help_menu.addAction(tutorial_action)
+        help_menu.addSeparator()
         about_action = QAction("AppCompass 정보", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
@@ -290,9 +351,15 @@ class MainWindow(QMainWindow):
                 f"v{self.ctx.version.version_no} · 최근 분석 v{self.ctx.run.version_no} "
                 f"({self.ctx.run.status})"
             )
+        # 다음 할 일을 모든 탭에서 보이게 한다. 막막함은 대개 여기서 온다.
+        try:
+            step = self.service.next_step(p.id)
+            next_text = f"　▶ 다음 할 일: {step.title}"
+        except ServiceError:
+            next_text = ""
         self.header_hint.setText(
             f"{p.domain_code} · {STAGE_LABELS.get(p.stage, p.stage)} · "
-            f"버전 {p.version_count}개 · 근거 {p.evidence_count}건 — {state}"
+            f"버전 {p.version_count}개 · 근거 {p.evidence_count}건 — {state}{next_text}"
         )
 
         run = self.ctx.run
@@ -527,6 +594,35 @@ class MainWindow(QMainWindow):
             self, "분석 이벤트", text or "기록이 없습니다.",
             "TECHSPEC §12 이벤트입니다. 데스크톱에서는 로컬 DB에만 저장됩니다."
         )
+
+    def show_tutorial(self) -> None:
+        """처음 사용 안내. 개념 설명이 아니라 '무엇을 하면 되는지' 순서만 보여준다."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("처음 사용 안내")
+        dialog.resize(760, 640)
+        layout = QVBoxLayout(dialog)
+
+        view = QTextBrowser()
+        view.setOpenExternalLinks(False)
+        view.setHtml(TUTORIAL_HTML)
+        layout.addWidget(view)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        start = QPushButton("① 다음 할 일 화면으로")
+        start.setObjectName("Primary")
+
+        def _go() -> None:
+            dialog.accept()
+            self.tabs.setCurrentIndex(0)
+
+        start.clicked.connect(_go)
+        close = QPushButton("닫기")
+        close.clicked.connect(dialog.reject)
+        row.addWidget(start)
+        row.addWidget(close)
+        layout.addLayout(row)
+        dialog.exec()
 
     def show_about(self) -> None:
         QMessageBox.about(

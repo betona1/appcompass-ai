@@ -130,14 +130,54 @@ class Severity(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class ImplementationStatus(StrEnum):
+    """MVP 기능의 구현 상태.
+
+    '이미 만든 것'과 '아직 안 만든 것'을 구분해야 개선 명세를 만들 수 있다.
+    만들지도 않은 기능을 개선하라고 할 수는 없다.
+    """
+
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    DROPPED = "DROPPED"
+
+
+IMPLEMENTATION_STATUS_LABELS: dict[ImplementationStatus, str] = {
+    ImplementationStatus.NOT_STARTED: "미구현",
+    ImplementationStatus.IN_PROGRESS: "구현 중",
+    ImplementationStatus.DONE: "구현됨",
+    ImplementationStatus.DROPPED: "제외함",
+}
+
+
+class HypothesisStatus(StrEnum):
+    """가설 검증 결과. 근거에서 규칙으로 도출한다."""
+
+    SUPPORTED = "SUPPORTED"
+    REFUTED = "REFUTED"
+    CONFLICTED = "CONFLICTED"
+    INSUFFICIENT = "INSUFFICIENT"
+
+
+HYPOTHESIS_STATUS_LABELS: dict[HypothesisStatus, str] = {
+    HypothesisStatus.SUPPORTED: "지지됨",
+    HypothesisStatus.REFUTED: "반박됨",
+    HypothesisStatus.CONFLICTED: "상충",
+    HypothesisStatus.INSUFFICIENT: "근거 부족",
+}
+
+
 class ReportFormat(StrEnum):
     MARKDOWN = "MARKDOWN"
     HTML = "HTML"
     TECHSPEC = "TECHSPEC"  # 구현용 기술 명세 (Markdown)
+    IMPROVEMENT = "IMPROVEMENT"  # 이미 만든 MVP의 개선 명세 (Markdown)
     XLSX = "XLSX"  # 엑셀. 텍스트가 아니라 내보낼 때 생성한다.
 
 
 #: 텍스트라서 분석 시점에 생성해 DB에 보관하는 형식.
+#: IMPROVEMENT는 구현 상태가 바뀔 때마다 달라지므로 내보낼 때 생성한다.
 STORED_REPORT_FORMATS: tuple[ReportFormat, ...] = (
     ReportFormat.MARKDOWN,
     ReportFormat.HTML,
@@ -148,6 +188,7 @@ REPORT_FORMAT_LABELS: dict[ReportFormat, str] = {
     ReportFormat.MARKDOWN: "진단 보고서 (Markdown)",
     ReportFormat.HTML: "진단 보고서 (HTML)",
     ReportFormat.TECHSPEC: "기술 명세 TECHSPEC (Markdown)",
+    ReportFormat.IMPROVEMENT: "개선 명세 — 이미 만든 MVP용 (Markdown)",
     ReportFormat.XLSX: "작업용 엑셀 (.xlsx)",
 }
 
@@ -155,6 +196,7 @@ REPORT_FORMAT_SUFFIX: dict[ReportFormat, str] = {
     ReportFormat.MARKDOWN: ".md",
     ReportFormat.HTML: ".html",
     ReportFormat.TECHSPEC: ".TECHSPEC.md",
+    ReportFormat.IMPROVEMENT: ".IMPROVEMENT.md",
     ReportFormat.XLSX: ".xlsx",
 }
 

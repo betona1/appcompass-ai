@@ -34,7 +34,9 @@ def run_selftest(report_path: str | None = None) -> int:
 
     from ..core.enums import DomainCode
     from ..core.exports import save_workbook
+    from ..core.improvement import render_improvement
     from ..core.models import AnalysisResult, IdeaStructure
+    from ..core.nextstep import ProjectState, decide_next_step
     from ..core.pipeline import run_analysis
     from ..core.policy import EvaluationPolicy
     from ..core.report import render_html, render_markdown
@@ -141,8 +143,39 @@ def run_selftest(report_path: str | None = None) -> int:
                 f"{len(sheets)}개 시트",
             )
 
+        # 개선 명세 — 구현 상태를 아는 문서
+        from ..core.enums import ImplementationStatus
+        from ..core.models import FeatureImplementation, feature_key
+
+        feats = [
+            FeatureImplementation(feature_key(t), t, "P0", ImplementationStatus.DONE)
+            for t in restored.mvp.p0_features[:2]
+        ]
+        improve = render_improvement(restored, feats, project_name="자체 점검")
+        check(
+            "개선 명세",
+            "## 1. 가설 검증 현황" in improve and "## 3. 고칠 것" in improve,
+            f"{len(improve)}자",
+        )
+
+        # 다음 할 일 — 상태별로 안내가 나오는지
+        steps = [
+            decide_next_step(ProjectState(has_project=False)),
+            decide_next_step(ProjectState(has_project=True)),
+            decide_next_step(
+                ProjectState(has_project=True, has_version=True, structure_approved=True)
+            ),
+        ]
+        check(
+            "다음 할 일 안내",
+            all(s.title and s.why and s.how for s in steps),
+            f"{len(steps)}개 상태 확인",
+        )
+
         db = Database(url="sqlite:///:memory:")
-        AppService(db)
+        service = AppService(db)
+        first = service.next_step(None)
+        check("서비스 다음 할 일", first.step_id == "CREATE_PROJECT", first.step_id)
         db.dispose()
         check("DB 스키마 생성", True)
 

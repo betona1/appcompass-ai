@@ -19,6 +19,7 @@ from .orm import (
     EvaluationPolicyRow,
     EvaluationScore,
     Evidence,
+    FeatureStatus,
     Project,
     ProjectVersion,
     Report,
@@ -184,6 +185,44 @@ class Repository:
 
     def delete_evidence(self, item: Evidence) -> None:
         self.session.delete(item)
+
+    # -- 기능 구현 상태 -----------------------------------------------------
+    def list_feature_statuses(self, project_id: str) -> list[FeatureStatus]:
+        stmt = select(FeatureStatus).where(FeatureStatus.project_id == project_id)
+        return list(self.session.scalars(stmt))
+
+    def upsert_feature_status(
+        self,
+        project_id: str,
+        feature_key: str,
+        feature_text: str,
+        priority: str,
+        status: str,
+        note: str = "",
+    ) -> FeatureStatus:
+        row = self.session.scalar(
+            select(FeatureStatus).where(
+                FeatureStatus.project_id == project_id,
+                FeatureStatus.feature_key == feature_key,
+            )
+        )
+        if row is None:
+            row = FeatureStatus(
+                project_id=project_id,
+                feature_key=feature_key,
+                feature_text=feature_text,
+                priority=priority,
+                status=status,
+                note=note,
+            )
+            self.session.add(row)
+        else:
+            row.feature_text = feature_text
+            row.priority = priority
+            row.status = status
+            row.note = note
+        self.session.flush()
+        return row
 
     # -- 보고서 -----------------------------------------------------------
     def add_report(self, **kwargs: Any) -> Report:

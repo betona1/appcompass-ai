@@ -71,6 +71,7 @@ class ReportScreen(ScreenBase):
             ReportFormat.MARKDOWN,
             ReportFormat.HTML,
             ReportFormat.TECHSPEC,
+            ReportFormat.IMPROVEMENT,
             ReportFormat.XLSX,
         ):
             self.format_combo.addItem(REPORT_FORMAT_LABELS[fmt], str(fmt))
@@ -154,6 +155,23 @@ class ReportScreen(ScreenBase):
                 "  근거           등록된 근거 전체\n\n"
                 "빈 칸은 사람이 채우라고 일부러 비워 둔 것입니다."
             )
+            return
+
+        if fmt == str(ReportFormat.IMPROVEMENT):
+            # 구현 상태가 바뀌면 내용이 달라지므로 볼 때마다 새로 만든다.
+            if self._ctx is None or self._ctx.run is None:
+                self.preview.setPlainText("분석 결과가 없습니다.")
+                self.export_button.setEnabled(False)
+                return
+            try:
+                content = self._ctx.service.build_improvement(self._ctx.run.id)
+            except ServiceError as exc:
+                self.preview.setPlainText(str(exc))
+                self.export_button.setEnabled(False)
+                return
+            self.preview.setPlainText(content)
+            self.checksum_label.setText("구현 상태에 따라 매번 새로 생성됩니다")
+            self.export_button.setEnabled(True)
             return
 
         report = self._reports.get(fmt)

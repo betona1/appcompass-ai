@@ -14,6 +14,8 @@ from .enums import (
     DimensionCode,
     DomainCode,
     EvidenceType,
+    HypothesisStatus,
+    ImplementationStatus,
     PivotDecision,
     ProjectStage,
     Severity,
@@ -35,7 +37,10 @@ __all__ = [
     "AnalysisMeta",
     "AnalysisResult",
     "EvidenceExample",
+    "FeatureImplementation",
+    "HypothesisVerdict",
     "MetricDefinition",
+    "feature_key",
 ]
 
 
@@ -548,6 +553,53 @@ class AnalysisResult:
             pivot=pivot,
             next_actions=tuple(data.get("next_actions") or ()),
         )
+
+
+def feature_key(text: str) -> str:
+    """기능 문구로부터 안정적인 키를 만든다.
+
+    기능 목록은 분석할 때마다 다시 생성되므로 순서 기반 ID(P0-01)는 흔들린다.
+    문구를 정규화한 해시를 쓰면 같은 기능이 같은 키를 유지한다.
+    문구를 바꾸면 다른 기능으로 취급되는데, 그게 맞다 — 내용이 바뀌었으면
+    구현 상태를 다시 확인해야 한다.
+    """
+    import hashlib
+    import re
+
+    normalized = re.sub(r"\s+", " ", (text or "").strip()).lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureImplementation:
+    """MVP 기능 하나의 구현 상태."""
+
+    key: str
+    text: str
+    priority: str  # "P0" | "P1"
+    status: ImplementationStatus = ImplementationStatus.NOT_STARTED
+    note: str = ""
+
+    @property
+    def is_built(self) -> bool:
+        return self.status in (
+            ImplementationStatus.DONE,
+            ImplementationStatus.IN_PROGRESS,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HypothesisVerdict:
+    """가설 하나의 검증 현황. 등록된 근거에서 규칙으로 도출한다."""
+
+    id: str
+    label: str
+    statement: str
+    status: HypothesisStatus
+    dimensions: tuple[DimensionCode, ...]
+    supporting_evidence: tuple[str, ...] = ()
+    contradicting_evidence: tuple[str, ...] = ()
+    reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)

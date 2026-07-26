@@ -197,6 +197,33 @@ class Evidence(Base):
     project: Mapped[Project] = relationship(back_populates="evidence")
 
 
+class FeatureStatus(Base):
+    """MVP 기능의 구현 상태 (프로젝트 단위).
+
+    분석은 다시 실행할 때마다 기능 목록을 새로 만들지만 구현 상태는 남아야 한다.
+    그래서 분석이 아니라 프로젝트에 붙이고, 기능 문구 해시를 키로 쓴다.
+    """
+
+    __tablename__ = "feature_statuses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    feature_key: Mapped[str] = mapped_column(String(32))
+    feature_text: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(8), default="P0")
+    status: Mapped[str] = mapped_column(String(24), default="NOT_STARTED")
+    note: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "feature_key", name="uq_feature_per_project"),
+    )
+
+
 class Report(Base):
     __tablename__ = "reports"
 

@@ -17,11 +17,23 @@ from ..core.enums import (
     DimensionCode,
     DomainCode,
     EvidenceType,
+    ImplementationStatus,
     ProjectStage,
     ProjectStatus,
     ReportFormat,
 )
-from ..core.models import AnalysisResult, EvidenceItem, IdeaStructure, RawIdeaInput
+from ..core.domains.registry import get_domain
+from ..core.improvement import render_improvement
+from ..core.nextstep import NextStep, ProjectState, decide_next_step
+from ..core.rules import missing_required_fields
+from ..core.models import (
+    AnalysisResult,
+    EvidenceItem,
+    FeatureImplementation,
+    IdeaStructure,
+    RawIdeaInput,
+    feature_key,
+)
 from ..core.pipeline import run_analysis
 from ..core.policy import EvaluationPolicy
 from ..core.exports import save_workbook
@@ -552,6 +564,141 @@ class AppService:
             return self._run_dto(run, version.version_no if version else 0)
 
     # ==================================================================
+    # 다음 할 일
+    # ==================================================================
+    def next_step(self, project_id: str | None) -> NextStep:
+        """지금 해야 할 일 하나를 알려준다.
+
+        화면이 아홉 개라 처음 쓰는 사람은 '그래서 뭘 해야 하지'에서 막힌다.
+        상태를 모아 규칙 엔진에 넘기고 하나만 돌려받는다.
+        """
+        policy = self.get_policy()
+        if project_id is None:
+            return decide_next_step(ProjectState(has_project=False), policy)
+
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            project = self._require_project(repo, project_id)
+            version = repo.latest_version(project_id)
+            run = repo.latest_run(project_id)
+            evidence_count = len(repo.list_evidence(project_id))
+            saved_features = repo.list_feature_statuses(project_id)
+
+            missing: tuple[tuple[str, str, str], ...] = ()
+            if version:
+                idea = IdeaStructure.from_dict(version.structured_idea)
+                missing = tuple(
+                    missing_required_fields(
+                        idea, get_domain(project.domain_code).required_fields()
+                    )
+                )
+
+            failed_run = None
+            if run is None:
+                recent = repo.list_runs(project_id, limit=1)
+                if recent and recent[0].status.startswith("FAILED"):
+                    failed_run = recent[0]
+
+            state = ProjectState(
+                has_project=True,
+                project_name=project.name,
+                domain_code=DomainCode(project.domain_code),
+                stage=ProjectStage(project.stage),
+                has_version=version is not None,
+                version_no=version.version_no if version else None,
+                missing_required=missing,
+                structure_approved=bool(version and version.structure_approved),
+                has_analysis=run is not None,
+                analysis_failed=failed_run is not None,
+                analysis_error=failed_run.error_detail if failed_run else None,
+                result=dict(run.result) if run and run.result else None,
+                evidence_count=evidence_count,
+                feature_total=len(
+                    (run.result or {}).get("mvp", {}).get("p0_features", [])
+                )
+                + len((run.result or {}).get("mvp", {}).get("p1_features", []))
+                if run and run.result
+                else 0,
+                feature_built=sum(
+                    1 for f in saved_features if f.status == str(ImplementationStatus.DONE)
+                ),
+            )
+        return decide_next_step(state, policy)
+
+    # ==================================================================
+    # 기능 구현 상태
+    # ==================================================================
+    def list_feature_status(self, project_id: str) -> list[FeatureImplementation]:
+        """최신 분석의 MVP 기능 목록에 저장된 구현 상태를 얹어 돌려준다.
+
+        기능 목록은 분석이 만들고, 구현 상태는 사람이 표시한다.
+        분석을 다시 실행해도 같은 문구의 기능은 상태가 유지된다.
+        """
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            run = repo.latest_run(project_id)
+            saved = {r.feature_key: r for r in repo.list_feature_statuses(project_id)}
+
+            if run is None or not run.result:
+                # 분석 전이라도 이미 표시해 둔 것은 보여준다.
+                return [
+                    FeatureImplementation(
+                        key=r.feature_key,
+                        text=r.feature_text,
+                        priority=r.priority,
+                        status=ImplementationStatus(r.status),
+                        note=r.note,
+                    )
+                    for r in saved.values()
+                ]
+
+            mvp = run.result.get("mvp", {})
+            out: list[FeatureImplementation] = []
+            for priority, key_name in (("P0", "p0_features"), ("P1", "p1_features")):
+                for text in mvp.get(key_name, []):
+                    key = feature_key(text)
+                    row = saved.get(key)
+                    out.append(
+                        FeatureImplementation(
+                            key=key,
+                            text=text,
+                            priority=priority,
+                            status=(
+                                ImplementationStatus(row.status)
+                                if row
+                                else ImplementationStatus.NOT_STARTED
+                            ),
+                            note=row.note if row else "",
+                        )
+                    )
+            return out
+
+    def set_feature_status(
+        self,
+        project_id: str,
+        feature: FeatureImplementation,
+        status: ImplementationStatus,
+        note: str = "",
+    ) -> None:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            repo.upsert_feature_status(
+                project_id=project_id,
+                feature_key=feature.key,
+                feature_text=feature.text,
+                priority=feature.priority,
+                status=str(status),
+                note=note,
+            )
+            repo.track(
+                "feature_status_changed",
+                project_id,
+                {"status": str(status), "priority": feature.priority},
+            )
+
+    # ==================================================================
     # 보고서
     # ==================================================================
     def get_reports(self, run_id: str) -> list[ReportDTO]:
@@ -585,6 +732,13 @@ class AppService:
         if fmt == ReportFormat.XLSX:
             checksum_value = self._export_xlsx(run_id, path)
             report_id = None
+        elif fmt == ReportFormat.IMPROVEMENT:
+            # 구현 상태가 바뀔 때마다 내용이 달라지므로 저장하지 않고 그때 만든다.
+            content = self.build_improvement(run_id)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            checksum_value = report_checksum(content)
+            report_id = None
         else:
             reports = {r.format: r for r in self.get_reports(run_id)}
             report = reports.get(str(fmt))
@@ -610,6 +764,34 @@ class AppService:
             if run:
                 repo.track("report_exported", run.project_id, {"format": str(fmt)})
         return path
+
+    def build_improvement(self, run_id: str) -> str:
+        """개선 명세 Markdown을 만든다. 미리보기와 내보내기가 같은 경로를 쓴다."""
+        policy = self.get_policy()
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            run = repo.get_run(run_id)
+            if run is None:
+                raise ServiceError("분석 실행을 찾을 수 없습니다.")
+            project = self._require_project(repo, run.project_id)
+            if not run.result:
+                raise ServiceError("완료된 분석 결과가 없어 개선 명세를 만들 수 없습니다.")
+            version = repo.get_version(run.project_version_id)
+            evidence = [self._evidence_item(e) for e in repo.list_evidence(project.id)]
+            payload = dict(run.result)
+            project_name = project.name
+            project_id = project.id
+            version_no = version.version_no if version else None
+
+        features = self.list_feature_status(project_id)
+        return render_improvement(
+            AnalysisResult.from_dict(payload),
+            features,
+            evidence,
+            policy=policy,
+            project_name=project_name,
+            version_no=version_no,
+        )
 
     def _export_xlsx(self, run_id: str, path: str) -> str:
         """저장된 분석 결과로 엑셀 파일을 만든다."""

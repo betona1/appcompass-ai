@@ -140,7 +140,8 @@ class BulletList(QWidget):
         super().__init__()
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(3)
+        self._layout.setSpacing(5)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
         self._empty_text = empty_text
         self.set_items(items)
 
@@ -153,6 +154,10 @@ class BulletList(QWidget):
             label = QLabel(f"•  {text}")
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            # 줄바꿈 라벨은 세로 정책을 명시하지 않으면 부모가 높이를 덜 잡아
+            # 글자 아랫부분이 잘린다.
+            label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+            label.setMinimumHeight(label.fontMetrics().height() + 4)
             self._layout.addWidget(label)
 
 
