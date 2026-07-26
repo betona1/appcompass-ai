@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from ..enums import DimensionCode, DomainCode, PivotDecision, Severity, WarningCode
+from ..enums import (
+    DimensionCode,
+    DomainCode,
+    EvidenceType,
+    PivotDecision,
+    Severity,
+    WarningCode,
+)
 from ..models import (
     DiagnosisResult,
     DiagnosisWarning,
+    EvidenceExample,
     IdeaStructure,
     MetricDefinition,
     MvpPlan,
@@ -289,6 +297,78 @@ class VibeQuestDomain:
             MetricDefinition("project_stage_selected", "프로젝트 단계 선택"),
             MetricDefinition("concept_to_task_transfer", "학습 후 실제 작업 재개"),
             MetricDefinition("daily_mission_return", "다음 날 미션 재방문"),
+        ]
+
+    # -- 근거 예시 ---------------------------------------------------------
+    def evidence_examples(self) -> list[EvidenceExample]:
+        return [
+            EvidenceExample(
+                label="① 비개발자 인터뷰 — 이 한 건으로 HOLD가 풀립니다",
+                evidence_type=EvidenceType.USER_INTERVIEW,
+                title="AI 코딩 도구 사용 비개발자 5명 인터뷰 (2026-07)",
+                summary=(
+                    "5명 중 4명이 '최근 일주일에 2회 이상 용어 때문에 작업이 멈췄다'고 진술. "
+                    "막힌 용어는 API 키, 환경변수, 토큰 순으로 반복됨. "
+                    "대처는 전원 'AI에게 되묻기'이며 3명은 그날 작업을 끝내지 못함.\n"
+                    "※ 해석이 아니라 관찰된 사실로 적으세요. "
+                    "'용어를 어려워한다'(X) / '5명 중 4명이 ~라고 진술했다'(O)"
+                ),
+                source_reference="interviews/2026-07-vibecoding.md",
+                sample_size=5,
+                supports=(
+                    DimensionCode.D01,
+                    DimensionCode.D02,
+                    DimensionCode.D03,
+                    DimensionCode.D04,
+                    DimensionCode.D05,
+                ),
+                note="가중치 합계 50짜리 항목을 지지해 전체 신뢰도가 0.35에 도달합니다.",
+            ),
+            EvidenceExample(
+                label="② 3분 미션 클릭더미 — 학습 전이 확인",
+                evidence_type=EvidenceType.PROTOTYPE_TEST,
+                title="상황형 3분 미션 클릭더미 테스트 8명",
+                summary=(
+                    "실제로 막혔던 용어 3개를 상황형 미션으로 만들어 8명에게 시연. "
+                    "8명 중 6명이 첫 미션을 완료(완료율 75%). "
+                    "그중 4명이 24시간 내에 막혔던 작업을 재개했다고 응답 — 전이율 50%. "
+                    "2명은 난이도가 높아 중도 이탈."
+                ),
+                sample_size=8,
+                supports=(
+                    DimensionCode.D05,
+                    DimensionCode.D06,
+                    DimensionCode.D10,
+                ),
+                contradicts=(DimensionCode.D07,),
+                note="불리한 결과는 '반박 항목'에 넣습니다. 유리한 것만 넣으면 진단이 무의미합니다.",
+            ),
+            EvidenceExample(
+                label="③ 데스크 리서치 — 기존 학습 수단 비교",
+                evidence_type=EvidenceType.DESK_RESEARCH,
+                title="개발 용어 학습 수단 6종 비교",
+                summary=(
+                    "용어 사전 2종, 퀴즈 앱 2종, 강의 2종 확인. "
+                    "전부 정의 중심이고 사용자의 실제 프로젝트 단계와 연결된 것은 없음. "
+                    "학습 후 작업 재개 여부를 측정하는 서비스도 없음."
+                ),
+                source_reference="research/2026-07-alternatives.md",
+                supports=(DimensionCode.D08, DimensionCode.D09),
+                note="데스크 리서치는 기본 신뢰도 0.35라 인터뷰보다 약합니다.",
+            ),
+            EvidenceExample(
+                label="④ 커뮤니티 행동 데이터 — 유입 검증",
+                evidence_type=EvidenceType.BEHAVIOR_DATA,
+                title="오픈채팅 용어 질문 로그 분석 (30일)",
+                summary=(
+                    "바이브코딩 오픈채팅 30일치 질문 412건 수집. "
+                    "그중 137건(33%)이 용어 의미를 묻는 질문. "
+                    "가장 많이 나온 용어는 API 키(28건), 환경변수(19건), 토큰(17건)."
+                ),
+                sample_size=412,
+                supports=(DimensionCode.D02, DimensionCode.D09),
+                note="행동 데이터는 신뢰도 1.00으로 가장 강합니다. 가능하면 이걸 먼저 확보하세요.",
+            ),
         ]
 
     # -- 피벗 규칙 ---------------------------------------------------------

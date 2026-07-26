@@ -8,10 +8,18 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Sequence
 
-from ..enums import DimensionCode, DomainCode, PivotDecision, Severity, WarningCode
+from ..enums import (
+    DimensionCode,
+    DomainCode,
+    EvidenceType,
+    PivotDecision,
+    Severity,
+    WarningCode,
+)
 from ..models import (
     DiagnosisResult,
     DiagnosisWarning,
+    EvidenceExample,
     IdeaStructure,
     MetricDefinition,
     MvpPlan,
@@ -403,6 +411,79 @@ class ExamathDomain:
             MetricDefinition("retry_after_error", "오답 후 재시도"),
             MetricDefinition("error_type_detected", "오류 유형 감지"),
             MetricDefinition("parent_weekly_summary_view", "부모 주간 요약 조회"),
+        ]
+
+    # -- 근거 예시 ---------------------------------------------------------
+    def evidence_examples(self) -> list[EvidenceExample]:
+        return [
+            EvidenceExample(
+                label="① 학부모 인터뷰 — 이 한 건으로 HOLD가 풀립니다",
+                evidence_type=EvidenceType.USER_INTERVIEW,
+                title="초2 학부모 5명 인터뷰 (2026-07)",
+                summary=(
+                    "5명 중 4명이 '받아내림 숙제에서 아이가 연필을 놓는다'고 진술. "
+                    "3명은 최근 한 달에 주 2~3회 겪었다고 답함. "
+                    "대처는 전원 '부모가 직접 설명'이며 2명은 갈등으로 끝나 포기. "
+                    "아이가 스스로 다시 시도한 사례는 1건.\n"
+                    "※ 해석이 아니라 관찰된 사실로 적으세요. "
+                    "'부모들이 힘들어한다'(X) / '5명 중 4명이 ~라고 진술했다'(O)"
+                ),
+                source_reference="interviews/2026-07-parents.md",
+                sample_size=5,
+                supports=(
+                    DimensionCode.D01,
+                    DimensionCode.D02,
+                    DimensionCode.D03,
+                    DimensionCode.D04,
+                    DimensionCode.D05,
+                ),
+                note="가중치 합계 50짜리 항목을 지지해 전체 신뢰도가 0.35에 도달합니다.",
+            ),
+            EvidenceExample(
+                label="② 종이 프로토타입 — 첫 성공 경험과 전이",
+                evidence_type=EvidenceType.PROTOTYPE_TEST,
+                title="구체물 조작 종이 프로토타입 6명",
+                summary=(
+                    "초2 6명에게 블록으로 10 만들기 3분 미션 시연. "
+                    "6명 중 5명이 첫 문제를 스스로 해결(첫 세션 완료율 83%). "
+                    "그러나 같은 유형 숫자 문제로 넘어가자 2명만 성공 — 구체물에서 숫자로의 전이가 약함."
+                ),
+                sample_size=6,
+                supports=(
+                    DimensionCode.D05,
+                    DimensionCode.D06,
+                    DimensionCode.D10,
+                ),
+                contradicts=(DimensionCode.D08,),
+                note="불리한 결과는 '반박 항목'에 넣습니다. 유리한 것만 넣으면 진단이 무의미합니다.",
+            ),
+            EvidenceExample(
+                label="③ 데스크 리서치 — 경쟁 앱 비교",
+                evidence_type=EvidenceType.DESK_RESEARCH,
+                title="초등 뺄셈 앱 5종 기능 비교",
+                summary=(
+                    "스토어 상위 5종 확인. 4종이 문제 반복 풀이 중심이고 "
+                    "구체물 조작은 1종뿐. 그 1종도 그림→숫자 전환 단계가 없음. "
+                    "오류 유형 분류를 제공하는 앱은 없음."
+                ),
+                source_reference="research/2026-07-competitors.md",
+                supports=(DimensionCode.D08, DimensionCode.D09),
+                note="데스크 리서치는 기본 신뢰도 0.35라 인터뷰보다 약합니다.",
+            ),
+            EvidenceExample(
+                label="④ 교사 인터뷰 — 영향자 관점",
+                evidence_type=EvidenceType.EXPERT_REVIEW,
+                title="초등 2학년 담임교사 3명 인터뷰",
+                summary=(
+                    "3명 모두 한 반에 받아내림 단계에서 멈춘 학생이 3~5명 있다고 답함. "
+                    "누가 어떤 오류 유형인지 파악할 시간이 없다는 진술이 공통. "
+                    "다만 학교 도입은 개인정보 요구사항 때문에 어렵다고 함."
+                ),
+                sample_size=3,
+                supports=(DimensionCode.D03, DimensionCode.D09),
+                contradicts=(DimensionCode.D10,),
+                note="교사는 사용자가 아니라 영향자입니다. 지지 항목을 신중히 고르세요.",
+            ),
         ]
 
     # -- 피벗 규칙 ---------------------------------------------------------

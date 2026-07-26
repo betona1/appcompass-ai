@@ -361,6 +361,102 @@ def test_hold_shows_cause_and_path_to_resolve(window, service):
     assert "근거" in text
 
 
+def test_evidence_example_fills_form_without_registering(window, service):
+    """예시는 양식만 채운다. 근거로 등록되면 안 된다."""
+    project = service.create_project("예시", domain_code=DomainCode.EXAMATH)
+    ctx = ScreenContext(service=service, project=service.get_project(project.id))
+    screen = window.screens["evidence"]
+    screen.refresh(ctx)
+
+    assert screen.example_menu.actions(), "예시 메뉴가 비어 있습니다."
+
+    before = len(service.list_evidence(project.id))
+    screen.example_menu.actions()[0].trigger()
+
+    # 양식이 채워졌는가
+    assert screen.title_edit.text()
+    assert screen.summary_edit.toPlainText()
+    assert any(b.isChecked() for b in screen._support_boxes.values())
+
+    # 등록되지는 않았는가
+    assert len(service.list_evidence(project.id)) == before
+
+    # 예시라는 사실을 경고하는가
+    assert "근거가 아니라" in screen.banner._label.text()
+
+
+def test_evidence_examples_are_domain_specific(window, service):
+    """도메인마다 다른 예시가 나와야 한다."""
+    em = service.create_project("수학", domain_code=DomainCode.EXAMATH)
+    vq = service.create_project("바이브", domain_code=DomainCode.VIBEQUEST)
+    screen = window.screens["evidence"]
+
+    screen.refresh(ScreenContext(service=service, project=service.get_project(em.id)))
+    screen.example_menu.actions()[0].trigger()
+    examath_text = screen.summary_edit.toPlainText()
+
+    screen.refresh(ScreenContext(service=service, project=service.get_project(vq.id)))
+    screen.example_menu.actions()[0].trigger()
+    vibequest_text = screen.summary_edit.toPlainText()
+
+    assert examath_text != vibequest_text
+    assert "받아내림" in examath_text
+    assert "용어" in vibequest_text
+
+
+def test_filled_example_is_actually_registrable(window, service):
+    """예시를 채운 뒤 등록 버튼이 실제로 동작해야 한다 (필수 항목 충족)."""
+    project = service.create_project("등록", domain_code=DomainCode.EXAMATH)
+    ctx = ScreenContext(service=service, project=service.get_project(project.id))
+    screen = window.screens["evidence"]
+    screen.refresh(ctx)
+    screen.example_menu.actions()[0].trigger()
+    screen._add()
+
+    items = service.list_evidence(project.id)
+    assert len(items) == 1
+    assert items[0].supports, "지지 항목이 저장되지 않았습니다."
+
+
+def test_first_example_lifts_hold(service):
+    """① 예시가 실제로 HOLD를 푸는지 (안내가 사실인지) 확인."""
+    from appcompass.core.confidence import compute_confidence
+    from appcompass.core.domains.registry import get_domain
+    from appcompass.core.models import EvidenceItem
+    from appcompass.core.policy import EvaluationPolicy
+
+    policy = EvaluationPolicy()
+    for domain in (DomainCode.EXAMATH, DomainCode.VIBEQUEST, DomainCode.GENERIC):
+        ex = get_domain(domain).evidence_examples()[0]
+        item = EvidenceItem(
+            id="e1",
+            evidence_type=ex.evidence_type,
+            title=ex.title,
+            sample_size=ex.sample_size,
+            supports=ex.supports,
+            contradicts=ex.contradicts,
+        )
+        result = compute_confidence([item], policy)
+        assert result.overall >= policy.hold_threshold, (
+            f"{domain} ① 예시로 HOLD가 안 풀립니다 ({result.overall:.3f}). "
+            "안내 문구가 사실과 다릅니다."
+        )
+
+
+def test_clear_form_resets_everything(window, service):
+    project = service.create_project("비우기", domain_code=DomainCode.EXAMATH)
+    ctx = ScreenContext(service=service, project=service.get_project(project.id))
+    screen = window.screens["evidence"]
+    screen.refresh(ctx)
+    screen.example_menu.actions()[0].trigger()
+    screen._clear_form()
+
+    assert screen.title_edit.text() == ""
+    assert screen.summary_edit.toPlainText() == ""
+    assert not any(b.isChecked() for b in screen._support_boxes.values())
+    assert not any(b.isChecked() for b in screen._contradict_boxes.values())
+
+
 def test_versions_screen_requires_two_versions(window, service):
     project = service.create_project("버전 스모크")
     service.create_version(

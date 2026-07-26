@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.domains.registry import get_domain
 from ...core.enums import DIMENSION_LABELS, DimensionCode, EvidenceType
 from ...services.app_service import ServiceError
 from ..context import ScreenContext
@@ -136,6 +138,17 @@ class EvidenceScreen(ScreenBase):
         form_layout.addWidget(self._build_dimension_grid(self._contradict_boxes))
 
         row = QHBoxLayout()
+        self.example_button = QPushButton("예시로 양식 채우기 ▾")
+        self.example_menu = QMenu(self.example_button)
+        self.example_button.setMenu(self.example_menu)
+        self.example_button.setToolTip(
+            "양식을 어떻게 쓰는지 보여주는 예시입니다. 근거가 아닙니다.\n"
+            "채운 뒤 실제로 관찰한 내용으로 바꿔서 등록하세요."
+        )
+        self.clear_button = QPushButton("양식 비우기")
+        self.clear_button.clicked.connect(self._clear_form)
+        row.addWidget(self.example_button)
+        row.addWidget(self.clear_button)
         row.addStretch(1)
         self.add_button = QPushButton("근거 등록")
         self.add_button.setObjectName("Primary")
@@ -188,6 +201,51 @@ class EvidenceScreen(ScreenBase):
             grid.addWidget(box, i // 3, i % 3)
         return holder
 
+    # -- 예시 -------------------------------------------------------------
+    def _rebuild_example_menu(self, domain_code: str) -> None:
+        """도메인에 맞는 예시 목록을 메뉴에 채운다."""
+        self.example_menu.clear()
+        examples = get_domain(domain_code).evidence_examples()
+        for ex in examples:
+            action = self.example_menu.addAction(ex.label)
+            action.setToolTip(ex.note)
+            action.triggered.connect(lambda _=False, e=ex: self._fill_example(e))
+        self.example_button.setEnabled(bool(examples))
+
+    def _fill_example(self, example) -> None:
+        """예시로 양식을 채운다. 등록은 하지 않는다."""
+        index = self.type_combo.findData(example.evidence_type)
+        if index >= 0:
+            self.type_combo.setCurrentIndex(index)
+        self.title_edit.setText(example.title)
+        self.summary_edit.setPlainText(example.summary)
+        self.source_edit.setText(example.source_reference or "")
+        self.sample_spin.setValue(example.sample_size or 0)
+        self.override_check.setChecked(False)
+
+        for code, box in self._support_boxes.items():
+            box.setChecked(code in example.supports)
+        for code, box in self._contradict_boxes.items():
+            box.setChecked(code in example.contradicts)
+
+        self.banner.set_text(
+            "예시로 양식을 채웠습니다. 이건 근거가 아니라 '이렇게 쓰세요'라는 예시입니다.\n"
+            "실제로 관찰하거나 들은 내용으로 바꾼 뒤 등록하세요. "
+            "예시 그대로 등록하면 자기 진단을 스스로 속이는 셈이 되어 판단이 무의미해집니다."
+            + (f"\n\n· {example.note}" if example.note else ""),
+            "critical",
+        )
+
+    def _clear_form(self) -> None:
+        self.title_edit.clear()
+        self.summary_edit.clear()
+        self.source_edit.clear()
+        self.sample_spin.setValue(0)
+        self.override_check.setChecked(False)
+        for box in list(self._support_boxes.values()) + list(self._contradict_boxes.values()):
+            box.setChecked(False)
+        self.banner.set_text("양식을 비웠습니다.", "info")
+
     # -- 상태 반영 --------------------------------------------------------
     def refresh(self, ctx: ScreenContext) -> None:
         self._ctx = ctx
@@ -195,6 +253,8 @@ class EvidenceScreen(ScreenBase):
         self.scroll.setVisible(ctx.has_project)
         if not ctx.has_project:
             return
+
+        self._rebuild_example_menu(ctx.project.domain_code)
 
         items = ctx.service.list_evidence(ctx.project.id)
         self.table.setRowCount(len(items))

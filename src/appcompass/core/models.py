@@ -34,6 +34,7 @@ __all__ = [
     "PivotResult",
     "AnalysisMeta",
     "AnalysisResult",
+    "EvidenceExample",
     "MetricDefinition",
 ]
 
@@ -547,6 +548,26 @@ class AnalysisResult:
             pivot=pivot,
             next_actions=tuple(data.get("next_actions") or ()),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceExample:
+    """근거 입력 양식을 어떻게 채우는지 보여주는 예시.
+
+    이것은 **양식 예시**이지 근거가 아니다. 사용자가 이 내용을 그대로 등록하면
+    자기 진단을 스스로 속이는 셈이 된다. UI는 반드시 그 사실을 함께 알려야 한다.
+    AI는 근거를 생성하지 않는다는 원칙(CLAUDE.md §11)은 그대로 유지된다.
+    """
+
+    label: str  # 메뉴에 보일 이름
+    evidence_type: EvidenceType
+    title: str
+    summary: str
+    supports: tuple[DimensionCode, ...]
+    contradicts: tuple[DimensionCode, ...] = ()
+    source_reference: str | None = None
+    sample_size: int | None = None
+    note: str = ""  # 이 예시가 무엇을 보여주는지
 
 
 @dataclass(frozen=True, slots=True)
