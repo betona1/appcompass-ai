@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from ..core.enums import (
+    APPROVAL_STATUS_LABELS,
     AnalysisStatus,
+    ApprovalStatus,
     AuditAction,
     DimensionCode,
     DomainCode,
@@ -56,6 +58,7 @@ from ..storage.orm import (
     AnalysisRun,
     Evidence,
     ExperimentRow,
+    PivotDecisionRow,
     Project,
     ProjectVersion,
     utcnow,
@@ -64,6 +67,7 @@ from ..storage.repository import Repository
 from .dto import (
     AuditLogDTO,
     EvidenceDTO,
+    PivotDecisionDTO,
     ProjectDTO,
     ReportDTO,
     RunDTO,
@@ -522,6 +526,27 @@ class AppService:
                     checksum=report_checksum(content),
                 )
 
+            # 피벗 판단을 사람이 검토할 수 있도록 별도 기록으로 남긴다.
+            # 분석 결과 JSON 안에만 두면 "무엇을 승인했는지"가 남지 않는다.
+            pivot_payload = payload["pivot"]
+            decision_row = repo.add_pivot_decision(
+                project_id=project.id,
+                analysis_run_id=run.id,
+                version_no=version_no,
+                decision=pivot_payload["decision"],
+                would_be_decision=pivot_payload.get("would_be_decision"),
+                confidence=pivot_payload["confidence"],
+                total_score=payload["diagnosis"]["total_score"],
+                reason_codes=list(pivot_payload["reason_codes"]),
+                rationale=pivot_payload["rationale"],
+                approval_status=str(ApprovalStatus.PENDING),
+            )
+            superseded = repo.supersede_pending_decisions(project.id, decision_row.id)
+            if superseded:
+                repo.track(
+                    "pivot_superseded", project.id, {"count": superseded}
+                )
+
             repo.audit(
                 self.actor_id,
                 AuditAction.ANALYSIS_COMPLETED,
@@ -573,6 +598,101 @@ class AppService:
             self._require_project(repo, run.project_id)
             version = repo.get_version(run.project_version_id)
             return self._run_dto(run, version.version_no if version else 0)
+
+    # ==================================================================
+    # 피벗 승인 (TECHSPEC F-090)
+    # ==================================================================
+    def latest_pivot_decision(self, project_id: str) -> PivotDecisionDTO | None:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            rows = repo.list_pivot_decisions(project_id)
+            return self._pivot_dto(rows[0]) if rows else None
+
+    def list_pivot_decisions(self, project_id: str) -> list[PivotDecisionDTO]:
+        """판단 이력. 사람이 무엇을 승인하고 무엇을 거절했는지 남는다."""
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            return [self._pivot_dto(r) for r in repo.list_pivot_decisions(project_id)]
+
+    def approve_pivot(self, decision_id: str, note: str = "") -> PivotDecisionDTO:
+        return self._decide_pivot(decision_id, ApprovalStatus.APPROVED, note)
+
+    def reject_pivot(self, decision_id: str, note: str) -> PivotDecisionDTO:
+        """거절할 때는 사유가 필수다.
+
+        왜 시스템과 다르게 판단했는지 남겨야 나중에 그 판단이 옳았는지 되짚을 수 있다.
+        사유 없는 거절은 기록으로서 쓸모가 없다.
+        """
+        if not note.strip():
+            raise ServiceError(
+                "거절 사유를 적어야 합니다.\n"
+                "왜 이 판단을 따르지 않는지 남겨야 나중에 되짚을 수 있습니다."
+            )
+        return self._decide_pivot(decision_id, ApprovalStatus.REJECTED, note)
+
+    def _decide_pivot(
+        self, decision_id: str, status: ApprovalStatus, note: str
+    ) -> PivotDecisionDTO:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            row = repo.get_pivot_decision(decision_id)
+            if row is None:
+                raise ServiceError("판단 기록을 찾을 수 없습니다.")
+            self._require_project(repo, row.project_id)
+            if row.approval_status == str(ApprovalStatus.SUPERSEDED):
+                raise ServiceError(
+                    "이미 새 분석으로 대체된 판단입니다. 최신 판단을 검토하세요."
+                )
+            if row.approval_status in (
+                str(ApprovalStatus.APPROVED),
+                str(ApprovalStatus.REJECTED),
+            ):
+                raise ServiceError(
+                    f"이미 {APPROVAL_STATUS_LABELS[ApprovalStatus(row.approval_status)]} "
+                    "기록입니다. 판단을 바꾸려면 분석을 다시 실행하세요."
+                )
+
+            row.approval_status = str(status)
+            row.approval_note = note.strip()
+            row.approved_by = self.actor_id
+            row.approved_at = utcnow()
+
+            action = (
+                AuditAction.PIVOT_APPROVED
+                if status == ApprovalStatus.APPROVED
+                else AuditAction.PIVOT_REJECTED
+            )
+            repo.audit(
+                self.actor_id, action, "PivotDecision", row.id,
+                after={"decision": row.decision, "note": row.approval_note},
+            )
+            repo.track(
+                "pivot_approved" if status == ApprovalStatus.APPROVED else "pivot_rejected",
+                row.project_id,
+                {"decision": row.decision},
+            )
+            return self._pivot_dto(row)
+
+    @staticmethod
+    def _pivot_dto(row: PivotDecisionRow) -> PivotDecisionDTO:
+        return PivotDecisionDTO(
+            id=row.id,
+            project_id=row.project_id,
+            run_id=row.analysis_run_id,
+            version_no=row.version_no,
+            decision=row.decision,
+            would_be_decision=row.would_be_decision,
+            confidence=row.confidence,
+            total_score=row.total_score,
+            reason_codes=tuple(row.reason_codes or ()),
+            rationale=row.rationale,
+            approval_status=row.approval_status,
+            approval_note=row.approval_note,
+            approved_at=row.approved_at,
+            created_at=row.created_at,
+        )
 
     # ==================================================================
     # 실험 (TECHSPEC F-080)
@@ -747,6 +867,13 @@ class AppService:
             run = repo.latest_run(project_id)
             evidence_count = len(repo.list_evidence(project_id))
             saved_features = repo.list_feature_statuses(project_id)
+            pending = None
+            if run is not None:
+                decision_row = repo.pivot_decision_for_run(run.id)
+                if decision_row and decision_row.approval_status == str(
+                    ApprovalStatus.PENDING
+                ):
+                    pending = decision_row
 
             missing: tuple[tuple[str, str, str], ...] = ()
             if version:
@@ -786,6 +913,8 @@ class AppService:
                 feature_built=sum(
                     1 for f in saved_features if f.status == str(ImplementationStatus.DONE)
                 ),
+                pivot_pending=pending is not None,
+                pivot_decision_id=pending.id if pending else None,
             )
         return decide_next_step(state, policy)
 

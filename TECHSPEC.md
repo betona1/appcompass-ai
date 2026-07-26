@@ -1500,8 +1500,8 @@ LLM은 문장을 만들고,
 | F-050 | 신뢰도 계산 | 완료 | 무근거 상한 0.20, 상충 감쇠, 표본 보정 |
 | F-060 | 타깃 후보 생성 | 완료(규칙) | 도메인 시드 + 현재 입력 파생. 근거 부족 시 추천 없이 비교만 |
 | F-070 | MVP 계획 | 완료(규칙) | 도메인 `constrain_mvp` 적용 |
-| F-080 | 실험 설계 | **미구현** | Phase 2 |
-| F-090 | 피벗 엔진 | 완료 | 8단계 우선순위 + HOLD 우선 + `would_be_decision` |
+| F-080 | 실험 설계 | 완료 | 가설별 추천 실험, 결과 → 근거 자동 변환 |
+| F-090 | 피벗 엔진 | 완료 | 8단계 우선순위 + HOLD 우선 + `would_be_decision` + 승인/거절 기록 |
 | F-100 | 보고서 | 부분 | Markdown·HTML 완료. PDF 미구현 |
 
 ## A.3 데이터 모델 대비
@@ -1514,8 +1514,9 @@ analysis_runs / evaluation_scores / evidence / reports
 audit_logs / analytics_events
 ```
 
-미구현: `Hypothesis`, `Experiment`, `PivotDecision`(승인 워크플로용 별도 테이블).
-현재 피벗 결과는 `analysis_runs.result` JSON 안에 포함되고 승인 상태는 저장하지 않는다.
+추가 구현: `experiments`, `pivot_decisions`, `feature_statuses`.
+가설은 별도 테이블 없이 MVP 계획에서 도출한 것(H-PROBLEM 등)을 쓴다.
+사람이 따로 관리하면 분석 결과와 어긋나기 때문이다.
 
 ## A.4 API 대신 서비스 메서드
 
@@ -1571,7 +1572,7 @@ audit_logs / analytics_events
 
 ## A.7 다음 단계
 
-Phase 2에서 `Hypothesis` / `Experiment` 테이블과 화면 F(실험)를 추가한다.
-Phase 3에서 `PivotDecision` 승인 워크플로를 추가한다.
+Phase 0~3 완료. 다음은 Phase 4(도메인별 문제 품질·오류 진단 모듈)와
+Phase 5(앱 이벤트 수집, 퍼널 대시보드)다.
 LLM은 `core/ports.py`의 Protocol 구현체로 붙이며, 붙이더라도
 점수·신뢰도·피벗 판정은 규칙 엔진이 계속 담당한다.

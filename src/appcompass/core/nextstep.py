@@ -58,6 +58,8 @@ class ProjectState:
     evidence_count: int = 0
     feature_total: int = 0
     feature_built: int = 0
+    pivot_pending: bool = False
+    pivot_decision_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,7 +331,27 @@ def decide_next_step(
             ),
         )
 
-    # 8. 마무리 ----------------------------------------------------------
+    # 8. 사람의 승인 ------------------------------------------------------
+    # 시스템은 판단을 제안할 뿐이다. 사람이 확인해야 다음으로 넘어간다.
+    if state.pivot_pending:
+        return NextStep(
+            step_id="APPROVE_PIVOT",
+            stage_code="DECIDE",
+            title=f"판단을 검토하고 승인하거나 거절하세요: {decision}",
+            why=(
+                "근거가 판단을 뒷받침하는 상태입니다. 시스템은 제안만 하고 적용하지 않습니다. "
+                "사람이 확인해야 기록이 남습니다."
+            ),
+            how=(
+                "'G. 피벗 보고서' 화면의 '사람의 결정'에서 내용을 확인합니다.",
+                "동의하면 '승인'을, 다르게 판단했다면 사유를 적고 '거절'을 누릅니다.",
+                "거절 사유는 나중에 그 판단이 옳았는지 되짚는 근거가 됩니다.",
+            ),
+            screen="report",
+            button_text="G. 피벗 보고서로 가기",
+        )
+
+    # 9. 마무리 ----------------------------------------------------------
     weakest = min(diag["dimensions"], key=lambda d: (d["raw_score"], -d["weight"]))
     if decision == str(PivotDecision.REFINE) and weakest["raw_score"] <= 3:
         return NextStep(

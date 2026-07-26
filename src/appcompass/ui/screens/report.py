@@ -12,16 +12,25 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
-from ...core.enums import REPORT_FORMAT_LABELS, REPORT_FORMAT_SUFFIX, ReportFormat
+from ...core.enums import (
+    APPROVAL_STATUS_LABELS,
+    REPORT_FORMAT_LABELS,
+    REPORT_FORMAT_SUFFIX,
+    ApprovalStatus,
+    ReportFormat,
+)
 from ...services.app_service import ServiceError
 from ..context import ScreenContext
-from ..widgets import Banner, BulletList, EmptyState, h1, h2, hint
+from ..theme import decision_label
+from ..widgets import Banner, BulletList, EmptyState, h1, h2, hint, scrollable
 from .base import ScreenBase
 
 
@@ -32,6 +41,7 @@ class ReportScreen(ScreenBase):
     def __init__(self) -> None:
         super().__init__()
         self._ctx: ScreenContext | None = None
+        self._decision = None
 
         self.empty = EmptyState(
             "보고서가 없습니다", "분석을 실행하면 Markdown/HTML 보고서가 함께 생성됩니다."
@@ -46,6 +56,42 @@ class ReportScreen(ScreenBase):
         self.banner = Banner("", "info")
         layout.addWidget(self.banner)
 
+        # --- 사람의 승인 (TECHSPEC F-090) ---
+        approval_box = QGroupBox("사람의 결정")
+        a_layout = QVBoxLayout(approval_box)
+        a_layout.addWidget(
+            hint(
+                "시스템은 판단을 제안할 뿐 적용하지 않습니다. 승인하거나 거절하면 기록으로 남습니다.\n"
+                "거절할 때는 사유가 필요합니다 — 왜 다르게 판단했는지 남겨야 나중에 되짚을 수 있습니다."
+            )
+        )
+        self.approval_state = QLabel("-")
+        self.approval_state.setWordWrap(True)
+        a_layout.addWidget(self.approval_state)
+
+        self.approval_note = QLineEdit()
+        self.approval_note.setPlaceholderText(
+            "결정 사유 (거절 시 필수, 승인 시 선택) — 예: 타깃 피벗 대신 문제 정의부터 다시 하기로 함"
+        )
+        a_layout.addWidget(self.approval_note)
+
+        a_row = QHBoxLayout()
+        a_row.addStretch(1)
+        self.reject_button = QPushButton("거절")
+        self.reject_button.setObjectName("Danger")
+        self.reject_button.clicked.connect(self._reject)
+        self.approve_button = QPushButton("승인")
+        self.approve_button.setObjectName("Primary")
+        self.approve_button.clicked.connect(self._approve)
+        a_row.addWidget(self.reject_button)
+        a_row.addWidget(self.approve_button)
+        a_layout.addLayout(a_row)
+
+        a_layout.addWidget(h2("판단 이력"))
+        self.history = BulletList([], "아직 판단 이력이 없습니다")
+        a_layout.addWidget(self.history)
+        layout.addWidget(approval_box)
+
         kcr = QHBoxLayout()
         for title, attr, empty in (
             ("유지", "keep", "유지 항목 없음"),
@@ -56,8 +102,10 @@ class ReportScreen(ScreenBase):
             box_layout = QVBoxLayout(box)
             widget = BulletList([], empty)
             setattr(self, attr, widget)
-            box_layout.addWidget(widget)
-            box_layout.addStretch(1)
+            # 항목이 길어 고정 높이에 넣으면 잘린다. 내용을 줄이는 대신 스크롤한다.
+            area = scrollable(widget)
+            area.setMinimumHeight(210)
+            box_layout.addWidget(area)
             kcr.addWidget(box, 1)
         layout.addLayout(kcr)
 
@@ -125,12 +173,93 @@ class ReportScreen(ScreenBase):
             "critical" if pivot["decision"] == "HOLD" else "ok",
         )
 
+        self._render_approval(ctx)
+
         try:
             self._reports = {r.format: r for r in ctx.service.get_reports(ctx.run.id)}
         except ServiceError as exc:
             self.banner.set_text(str(exc), "critical")
             self._reports = {}
         self._render_preview()
+
+    # -- 승인 -------------------------------------------------------------
+    def _render_approval(self, ctx: ScreenContext) -> None:
+        self._decision = None
+        history = ctx.service.list_pivot_decisions(ctx.project.id)
+
+        # 지금 보고 있는 분석의 판단만 승인 대상이다.
+        self._decision = next(
+            (d for d in history if d.run_id == ctx.run.id), None
+        )
+
+        if self._decision is None:
+            self.approval_state.setText(
+                "이 분석에는 판단 기록이 없습니다. '분석 실행'을 다시 누르면 생성됩니다."
+            )
+            self.approve_button.setEnabled(False)
+            self.reject_button.setEnabled(False)
+            self.approval_note.setEnabled(False)
+        else:
+            d = self._decision
+            status = ApprovalStatus(d.approval_status)
+            pending = status == ApprovalStatus.PENDING
+            self.approve_button.setEnabled(pending)
+            self.reject_button.setEnabled(pending)
+            self.approval_note.setEnabled(pending)
+            self.approval_note.setText("" if pending else d.approval_note)
+
+            if pending:
+                self.approval_state.setText(
+                    f"<b>검토 대기</b> — 시스템 판단 {decision_label(d.decision)} 에 대해 "
+                    "승인 또는 거절해 주세요."
+                )
+            else:
+                when = d.approved_at.strftime("%Y-%m-%d %H:%M") if d.approved_at else "-"
+                note = f"<br>사유: {d.approval_note}" if d.approval_note else ""
+                self.approval_state.setText(
+                    f"<b>{APPROVAL_STATUS_LABELS[status]}</b> ({when}) — "
+                    f"{decision_label(d.decision)}{note}"
+                )
+
+        items: list[str] = []
+        for d in history:
+            status = ApprovalStatus(d.approval_status)
+            when = d.created_at.strftime("%m-%d %H:%M")
+            line = (
+                f"{when}  v{d.version_no}  {decision_label(d.decision)}  "
+                f"(신뢰도 {d.confidence:.2f}, 총점 {d.total_score:.1f})  "
+                f"→ {APPROVAL_STATUS_LABELS[status]}"
+            )
+            if d.approval_note:
+                line += f"  — {d.approval_note}"
+            items.append(line)
+        self.history.set_items(items)
+
+    def _approve(self) -> None:
+        if self._ctx is None or self._decision is None:
+            return
+        try:
+            self._ctx.service.approve_pivot(
+                self._decision.id, self.approval_note.text()
+            )
+        except ServiceError as exc:
+            QMessageBox.warning(self, "승인할 수 없습니다", str(exc))
+            return
+        self.status_message.emit("판단을 승인했습니다.")
+        self.data_changed.emit()
+
+    def _reject(self) -> None:
+        if self._ctx is None or self._decision is None:
+            return
+        try:
+            self._ctx.service.reject_pivot(
+                self._decision.id, self.approval_note.text()
+            )
+        except ServiceError as exc:
+            QMessageBox.warning(self, "거절할 수 없습니다", str(exc))
+            return
+        self.status_message.emit("판단을 거절했습니다. 사유가 기록되었습니다.")
+        self.data_changed.emit()
 
     def _render_preview(self) -> None:
         fmt = self.format_combo.currentData()

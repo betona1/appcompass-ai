@@ -141,7 +141,7 @@ class BulletList(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(5)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         self._empty_text = empty_text
         self.set_items(items)
 
@@ -154,10 +154,12 @@ class BulletList(QWidget):
             label = QLabel(f"•  {text}")
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            # 줄바꿈 라벨은 세로 정책을 명시하지 않으면 부모가 높이를 덜 잡아
-            # 글자 아랫부분이 잘린다.
-            label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
-            label.setMinimumHeight(label.fontMetrics().height() + 4)
+            # 줄바꿈 라벨은 폭이 정해져야 높이가 정해진다(heightForWidth).
+            # 이걸 켜지 않으면 레이아웃이 한 줄 높이만 잡아 둘째 줄이 잘린다.
+            # 고정 minimumHeight로 때우면 한 줄짜리만 고쳐지고 여러 줄은 그대로 잘린다.
+            policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+            policy.setHeightForWidth(True)
+            label.setSizePolicy(policy)
             self._layout.addWidget(label)
 
 

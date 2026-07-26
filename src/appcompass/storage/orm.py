@@ -267,6 +267,44 @@ class ExperimentRow(Base):
     __table_args__ = (Index("ix_experiments_project", "project_id", "status"),)
 
 
+class PivotDecisionRow(Base):
+    """피벗 판단과 사람의 승인 기록 (TECHSPEC F-090, §7.8).
+
+    시스템 판단을 분석 결과 안에만 두면 "사람이 무엇을 승인했는지"가 남지 않는다.
+    특히 **거절 사유**가 중요하다. 왜 시스템과 다르게 판단했는지를 남겨야
+    나중에 그 판단이 옳았는지 되짚을 수 있다.
+    """
+
+    __tablename__ = "pivot_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    analysis_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("analysis_runs.id", ondelete="CASCADE")
+    )
+    version_no: Mapped[int] = mapped_column(Integer, default=0)
+    decision: Mapped[str] = mapped_column(String(32))
+    would_be_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    total_score: Mapped[float] = mapped_column(Float, default=0.0)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    approval_status: Mapped[str] = mapped_column(String(24), default="PENDING")
+    approval_note: Mapped[str] = mapped_column(Text, default="")
+    approved_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("analysis_run_id", name="uq_pivot_per_run"),
+        Index("ix_pivot_project_created", "project_id", "created_at"),
+    )
+
+
 class Report(Base):
     __tablename__ = "reports"
 

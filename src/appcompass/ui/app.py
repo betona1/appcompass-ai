@@ -188,6 +188,28 @@ def run_selftest(report_path: str | None = None) -> int:
         service = AppService(db)
         first = service.next_step(None)
         check("서비스 다음 할 일", first.step_id == "CREATE_PROJECT", first.step_id)
+
+        # 피벗 승인 — 사람의 결정이 기록으로 남는지
+        from ..core.enums import ApprovalStatus
+        from ..core.models import RawIdeaInput
+
+        proj = service.create_project("자체 점검", domain_code=DomainCode.VIBEQUEST)
+        ver = service.create_version(proj.id, RawIdeaInput(app_name="자체 점검"), idea)
+        service.approve_structure(ver.id)
+        service.run_analysis(ver.id)
+        pending = service.latest_pivot_decision(proj.id)
+        check(
+            "피벗 판단 기록",
+            pending is not None
+            and pending.approval_status == str(ApprovalStatus.PENDING),
+            pending.decision if pending else "없음",
+        )
+        decided = service.approve_pivot(pending.id, "자체 점검")
+        check(
+            "피벗 승인 기록",
+            decided.approval_status == str(ApprovalStatus.APPROVED)
+            and decided.approved_at is not None,
+        )
         db.dispose()
         check("DB 스키마 생성", True)
 

@@ -21,6 +21,7 @@ from .orm import (
     Evidence,
     ExperimentRow,
     FeatureStatus,
+    PivotDecisionRow,
     Project,
     ProjectVersion,
     Report,
@@ -245,6 +246,47 @@ class Repository:
 
     def delete_experiment(self, row: ExperimentRow) -> None:
         self.session.delete(row)
+
+    # -- 피벗 판단 ---------------------------------------------------------
+    def add_pivot_decision(self, **kwargs: Any) -> PivotDecisionRow:
+        row = PivotDecisionRow(**kwargs)
+        self.session.add(row)
+        self.session.flush()
+        return row
+
+    def get_pivot_decision(self, decision_id: str) -> PivotDecisionRow | None:
+        return self.session.get(PivotDecisionRow, decision_id)
+
+    def pivot_decision_for_run(self, run_id: str) -> PivotDecisionRow | None:
+        return self.session.scalar(
+            select(PivotDecisionRow).where(PivotDecisionRow.analysis_run_id == run_id)
+        )
+
+    def list_pivot_decisions(self, project_id: str) -> list[PivotDecisionRow]:
+        stmt = (
+            select(PivotDecisionRow)
+            .where(PivotDecisionRow.project_id == project_id)
+            .order_by(desc(PivotDecisionRow.created_at))
+        )
+        return list(self.session.scalars(stmt))
+
+    def supersede_pending_decisions(self, project_id: str, keep_id: str) -> int:
+        """새 판단이 나오면 이전 '검토 대기'는 지난 판단으로 넘긴다.
+
+        이미 승인·거절한 기록은 건드리지 않는다. 그건 사람이 내린 결정이라 남아야 한다.
+        """
+        rows = self.session.scalars(
+            select(PivotDecisionRow).where(
+                PivotDecisionRow.project_id == project_id,
+                PivotDecisionRow.approval_status == "PENDING",
+                PivotDecisionRow.id != keep_id,
+            )
+        )
+        count = 0
+        for row in rows:
+            row.approval_status = "SUPERSEDED"
+            count += 1
+        return count
 
     # -- 보고서 -----------------------------------------------------------
     def add_report(self, **kwargs: Any) -> Report:

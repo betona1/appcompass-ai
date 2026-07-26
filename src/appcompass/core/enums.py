@@ -168,6 +168,27 @@ HYPOTHESIS_STATUS_LABELS: dict[HypothesisStatus, str] = {
 }
 
 
+class ApprovalStatus(StrEnum):
+    """피벗 판단에 대한 사람의 결정 (TECHSPEC F-090).
+
+    시스템은 판단을 제안할 뿐 적용하지 않는다.
+    사람이 승인하거나 거절해야 하고, 그 기록이 남아야 한다.
+    """
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    SUPERSEDED = "SUPERSEDED"  # 새 분석이 나와 이 판단은 더 이상 최신이 아님
+
+
+APPROVAL_STATUS_LABELS: dict[ApprovalStatus, str] = {
+    ApprovalStatus.PENDING: "검토 대기",
+    ApprovalStatus.APPROVED: "승인함",
+    ApprovalStatus.REJECTED: "거절함",
+    ApprovalStatus.SUPERSEDED: "지난 판단",
+}
+
+
 class ReportFormat(StrEnum):
     MARKDOWN = "MARKDOWN"
     HTML = "HTML"
@@ -215,5 +236,7 @@ class AuditAction(StrEnum):
     EVIDENCE_DELETED = "EVIDENCE_DELETED"
     EXPERIMENT_CREATED = "EXPERIMENT_CREATED"
     EXPERIMENT_DELETED = "EXPERIMENT_DELETED"
+    PIVOT_APPROVED = "PIVOT_APPROVED"
+    PIVOT_REJECTED = "PIVOT_REJECTED"
     POLICY_UPDATED = "POLICY_UPDATED"
     REPORT_EXPORTED = "REPORT_EXPORTED"

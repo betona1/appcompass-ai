@@ -148,6 +148,15 @@ def test_full_journey_order(service):
             supports=code_set,
         )
     service.run_analysis(version.id)
+
+    # 8) 마무리 전에 사람의 승인을 먼저 요구한다
+    step = service.next_step(project.id)
+    assert step.step_id == "APPROVE_PIVOT", f"승인을 먼저 물어야 합니다: {step.step_id}"
+    assert step.screen == "report"
+
+    # 9) 승인하면 마무리 단계로
+    decision = service.latest_pivot_decision(project.id)
+    service.approve_pivot(decision.id, "방향 동의")
     step = service.next_step(project.id)
     assert step.stage_code == "FINISH", f"마무리 단계가 아닙니다: {step.step_id}"
     assert step.is_done is True
@@ -211,6 +220,7 @@ def test_mvp_stage_asks_to_mark_built_features(service):
             sample_size=200, supports=code_set,
         )
     service.run_analysis(version.id)
+    service.approve_pivot(service.latest_pivot_decision(project.id).id, "동의")
 
     step = service.next_step(project.id)
     assert step.step_id == "MARK_BUILT"

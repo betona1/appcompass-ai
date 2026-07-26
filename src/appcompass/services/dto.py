@@ -89,6 +89,28 @@ class ReportDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class PivotDecisionDTO:
+    id: str
+    project_id: str
+    run_id: str
+    version_no: int
+    decision: str
+    would_be_decision: str | None
+    confidence: float
+    total_score: float
+    reason_codes: tuple[str, ...]
+    rationale: str
+    approval_status: str
+    approval_note: str
+    approved_at: datetime | None
+    created_at: datetime
+
+    @property
+    def is_pending(self) -> bool:
+        return self.approval_status == "PENDING"
+
+
+@dataclass(frozen=True, slots=True)
 class AuditLogDTO:
     id: str
     actor_id: str | None
