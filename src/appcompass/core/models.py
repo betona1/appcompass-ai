@@ -20,6 +20,23 @@ from .enums import (
     WarningCode,
 )
 
+__all__ = [
+    "RawIdeaInput",
+    "IdeaStructure",
+    "EvidenceItem",
+    "DiagnosisWarning",
+    "ScoreAdjustment",
+    "DimensionScore",
+    "DiagnosisResult",
+    "TargetCandidate",
+    "TargetCandidateSet",
+    "MvpPlan",
+    "PivotResult",
+    "AnalysisMeta",
+    "AnalysisResult",
+    "MetricDefinition",
+]
+
 
 # ---------------------------------------------------------------------------
 # 입력
@@ -405,6 +422,131 @@ class AnalysisResult:
             "pivot": self.pivot.to_dict(),
             "next_actions": list(self.next_actions),
         }
+
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AnalysisResult:
+        """저장된 JSON을 다시 객체로 되돌린다.
+
+        엑셀처럼 분석 시점에 만들어 두지 않는 산출물을 나중에 생성할 때 쓴다.
+        to_dict()의 역함수이며, JSON Schema를 통과한 payload만 들어온다고 가정한다.
+        """
+        m = data["meta"]
+        meta = AnalysisMeta(
+            engine=m["engine"],
+            engine_version=m["engine_version"],
+            policy_version=m["policy_version"],
+            schema_version=m["schema_version"],
+            domain_code=DomainCode(m["domain_code"]),
+            model_provider=m.get("model_provider"),
+            model_name=m.get("model_name"),
+            prompt_version=m.get("prompt_version"),
+            created_at=(
+                datetime.fromisoformat(m["created_at"]) if m.get("created_at") else None
+            ),
+        )
+
+        d = data["diagnosis"]
+        diagnosis = DiagnosisResult(
+            total_score=d["total_score"],
+            overall_confidence=d["overall_confidence"],
+            dimensions=tuple(
+                DimensionScore(
+                    code=DimensionCode(x["code"]),
+                    label=x["label"],
+                    raw_score=x["raw_score"],
+                    weight=x["weight"],
+                    normalized_score=x["normalized_score"],
+                    reason=x["reason"],
+                    missing_evidence=tuple(x.get("missing_evidence") or ()),
+                    recommended_action=x.get("recommended_action", ""),
+                    confidence=x.get("confidence", 0.0),
+                )
+                for x in d["dimensions"]
+            ),
+            warnings=tuple(
+                DiagnosisWarning(
+                    code=WarningCode(x["code"]),
+                    message=x["message"],
+                    severity=Severity(x["severity"]),
+                    field=x.get("field"),
+                    recommended_action=x.get("recommended_action", ""),
+                )
+                for x in d["warnings"]
+            ),
+            critical_risks=tuple(d.get("critical_risks") or ()),
+            unknowns=tuple(d.get("unknowns") or ()),
+        )
+
+        t = data["targets"]
+        targets = TargetCandidateSet(
+            candidates=tuple(
+                TargetCandidate(
+                    name=c["name"],
+                    user=c["user"],
+                    payer=c.get("payer"),
+                    influencer=c.get("influencer"),
+                    trigger_situation=c.get("trigger_situation", ""),
+                    problem=c.get("problem", ""),
+                    current_alternative=c.get("current_alternative"),
+                    why_promising=tuple(c.get("why_promising") or ()),
+                    risks=tuple(c.get("risks") or ()),
+                    validation_questions=tuple(c.get("validation_questions") or ()),
+                    recommended_experiment=c.get("recommended_experiment", ""),
+                )
+                for c in t["candidates"]
+            ),
+            recommended_candidate_index=t.get("recommended_candidate_index"),
+            recommendation_reason=t.get("recommendation_reason", ""),
+            source=t.get("source", "RULE"),
+        )
+
+        mv = data["mvp"]
+        mvp = MvpPlan(
+            core_hypothesis=mv.get("core_hypothesis", ""),
+            problem_hypothesis=mv.get("problem_hypothesis", ""),
+            behavior_hypothesis=mv.get("behavior_hypothesis", ""),
+            value_hypothesis=mv.get("value_hypothesis", ""),
+            retention_hypothesis=mv.get("retention_hypothesis", ""),
+            revenue_hypothesis=mv.get("revenue_hypothesis"),
+            p0_features=tuple(mv.get("p0_features") or ()),
+            p1_features=tuple(mv.get("p1_features") or ()),
+            excluded_features=tuple(mv.get("excluded_features") or ()),
+            first_success_experience=mv.get("first_success_experience", ""),
+            core_user_flow=tuple(mv.get("core_user_flow") or ()),
+            metrics=tuple(mv.get("metrics") or ()),
+            risks=tuple(mv.get("risks") or ()),
+            source=mv.get("source", "RULE"),
+        )
+
+        p = data["pivot"]
+        pivot = PivotResult(
+            decision=PivotDecision(p["decision"]),
+            confidence=p["confidence"],
+            reason_codes=tuple(p.get("reason_codes") or ()),
+            rationale=p["rationale"],
+            would_be_decision=(
+                PivotDecision(p["would_be_decision"])
+                if p.get("would_be_decision")
+                else None
+            ),
+            evidence_ids=tuple(p.get("evidence_ids") or ()),
+            keep=tuple(p.get("keep") or ()),
+            change=tuple(p.get("change") or ()),
+            remove=tuple(p.get("remove") or ()),
+            next_actions=tuple(p.get("next_actions") or ()),
+            requires_human_approval=p.get("requires_human_approval", True),
+        )
+
+        return cls(
+            meta=meta,
+            idea=IdeaStructure.from_dict(data["idea"]),
+            diagnosis=diagnosis,
+            targets=targets,
+            mvp=mvp,
+            pivot=pivot,
+            next_actions=tuple(data.get("next_actions") or ()),
+        )
 
 
 @dataclass(frozen=True, slots=True)

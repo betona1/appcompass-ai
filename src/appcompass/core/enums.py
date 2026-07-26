@@ -133,6 +133,30 @@ class Severity(StrEnum):
 class ReportFormat(StrEnum):
     MARKDOWN = "MARKDOWN"
     HTML = "HTML"
+    TECHSPEC = "TECHSPEC"  # 구현용 기술 명세 (Markdown)
+    XLSX = "XLSX"  # 엑셀. 텍스트가 아니라 내보낼 때 생성한다.
+
+
+#: 텍스트라서 분석 시점에 생성해 DB에 보관하는 형식.
+STORED_REPORT_FORMATS: tuple[ReportFormat, ...] = (
+    ReportFormat.MARKDOWN,
+    ReportFormat.HTML,
+    ReportFormat.TECHSPEC,
+)
+
+REPORT_FORMAT_LABELS: dict[ReportFormat, str] = {
+    ReportFormat.MARKDOWN: "진단 보고서 (Markdown)",
+    ReportFormat.HTML: "진단 보고서 (HTML)",
+    ReportFormat.TECHSPEC: "기술 명세 TECHSPEC (Markdown)",
+    ReportFormat.XLSX: "작업용 엑셀 (.xlsx)",
+}
+
+REPORT_FORMAT_SUFFIX: dict[ReportFormat, str] = {
+    ReportFormat.MARKDOWN: ".md",
+    ReportFormat.HTML: ".html",
+    ReportFormat.TECHSPEC: ".TECHSPEC.md",
+    ReportFormat.XLSX: ".xlsx",
+}
 
 
 class AuditAction(StrEnum):

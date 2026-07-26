@@ -21,11 +21,13 @@ from ..core.enums import (
     ProjectStatus,
     ReportFormat,
 )
-from ..core.models import EvidenceItem, IdeaStructure, RawIdeaInput
+from ..core.models import AnalysisResult, EvidenceItem, IdeaStructure, RawIdeaInput
 from ..core.pipeline import run_analysis
 from ..core.policy import EvaluationPolicy
+from ..core.exports import save_workbook
 from ..core.report import checksum as report_checksum
 from ..core.report import render_html, render_markdown
+from ..core.techspec import render_techspec
 from ..core.schema import SchemaValidationError, validate_analysis_result
 from ..storage.db import Database
 from ..storage.orm import (
@@ -477,24 +479,25 @@ class AppService:
             repo.add_scores(run, payload["diagnosis"]["dimensions"])
 
             # 보고서를 함께 생성해 버전 고정 (TECHSPEC F-100)
-            md = render_markdown(
-                result, evidence, project_name=project_name, version_no=version_no
-            )
-            html_doc = render_html(
-                result, evidence, project_name=project_name, version_no=version_no
-            )
-            repo.add_report(
-                analysis_run_id=run.id,
-                format=str(ReportFormat.MARKDOWN),
-                content=md,
-                checksum=report_checksum(md),
-            )
-            repo.add_report(
-                analysis_run_id=run.id,
-                format=str(ReportFormat.HTML),
-                content=html_doc,
-                checksum=report_checksum(html_doc),
-            )
+            # 엑셀은 텍스트가 아니라 여기 저장하지 않고 내보낼 때 만든다.
+            documents = {
+                ReportFormat.MARKDOWN: render_markdown(
+                    result, evidence, project_name=project_name, version_no=version_no
+                ),
+                ReportFormat.HTML: render_html(
+                    result, evidence, project_name=project_name, version_no=version_no
+                ),
+                ReportFormat.TECHSPEC: render_techspec(
+                    result, evidence, project_name=project_name, version_no=version_no
+                ),
+            }
+            for fmt, content in documents.items():
+                repo.add_report(
+                    analysis_run_id=run.id,
+                    format=str(fmt),
+                    content=content,
+                    checksum=report_checksum(content),
+                )
 
             repo.audit(
                 self.actor_id,
@@ -571,12 +574,29 @@ class AppService:
             ]
 
     def export_report(self, run_id: str, fmt: ReportFormat, path: str) -> str:
-        reports = {r.format: r for r in self.get_reports(run_id)}
-        report = reports.get(str(fmt))
-        if report is None:
-            raise ServiceError(f"{fmt} 형식 보고서가 없습니다.")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(report.content)
+        """보고서를 파일로 내보낸다.
+
+        텍스트 형식은 분석 시점에 고정된 내용을 그대로 쓴다.
+        엑셀은 바이너리라 DB에 두지 않고 저장된 분석 결과에서 그때 만든다.
+        어느 쪽이든 원본은 분석 결과이므로 내용이 달라지지 않는다.
+        """
+        fmt = ReportFormat(fmt)
+
+        if fmt == ReportFormat.XLSX:
+            checksum_value = self._export_xlsx(run_id, path)
+            report_id = None
+        else:
+            reports = {r.format: r for r in self.get_reports(run_id)}
+            report = reports.get(str(fmt))
+            if report is None:
+                raise ServiceError(
+                    f"{fmt} 형식 보고서가 없습니다. 분석을 다시 실행하면 생성됩니다."
+                )
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(report.content)
+            checksum_value = report.checksum
+            report_id = report.id
+
         with self.db.transaction() as s:
             repo = Repository(s)
             run = repo.get_run(run_id)
@@ -584,12 +604,34 @@ class AppService:
                 self.actor_id,
                 AuditAction.REPORT_EXPORTED,
                 "Report",
-                report.id,
-                after={"format": report.format, "checksum": report.checksum},
+                report_id or run_id,
+                after={"format": str(fmt), "checksum": checksum_value},
             )
             if run:
-                repo.track("report_exported", run.project_id, {"format": report.format})
+                repo.track("report_exported", run.project_id, {"format": str(fmt)})
         return path
+
+    def _export_xlsx(self, run_id: str, path: str) -> str:
+        """저장된 분석 결과로 엑셀 파일을 만든다."""
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            run = repo.get_run(run_id)
+            if run is None:
+                raise ServiceError("분석 실행을 찾을 수 없습니다.")
+            project = self._require_project(repo, run.project_id)
+            if not run.result:
+                raise ServiceError("완료된 분석 결과가 없어 엑셀을 만들 수 없습니다.")
+            version = repo.get_version(run.project_version_id)
+            evidence = [self._evidence_item(e) for e in repo.list_evidence(project.id)]
+            payload = dict(run.result)
+            project_name = project.name
+            version_no = version.version_no if version else None
+
+        result = AnalysisResult.from_dict(payload)
+        save_workbook(
+            path, result, evidence, project_name=project_name, version_no=version_no
+        )
+        return report_checksum(str(sorted(payload.items())))
 
     # ==================================================================
     # 버전 비교 (화면 H)
