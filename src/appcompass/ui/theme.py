@@ -90,6 +90,10 @@ QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     border: 1px solid #c6ccd3; border-radius: 6px; padding: 5px 7px; background: #ffffff;
 }
 QPlainTextEdit:focus, QLineEdit:focus { border-color: #2f6fed; }
+/* 읽기 전용은 겉모습이 달라야 한다. 같으면 입력이 고장 난 것으로 오해한다. */
+QPlainTextEdit[readOnly="true"], QLineEdit[readOnly="true"] {
+    background: #f1f2f4; color: #5a6068; border-style: dashed;
+}
 
 QTableWidget, QTreeWidget, QListWidget {
     border: 1px solid #d9dde2; border-radius: 8px; background: #ffffff;

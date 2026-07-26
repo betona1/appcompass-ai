@@ -205,6 +205,162 @@ def test_unchanged_raw_input_preserves_refined_structure(window, service):
     assert seed.payer == "부모"
 
 
+def test_approved_version_offers_a_way_to_keep_editing(window, service, monkeypatch):
+    """승인된 버전에서도 구조화 결과를 고칠 경로가 있어야 한다.
+
+    구매자·첫 성공 경험·재방문 이유는 B화면에만 있는 항목이라
+    이 경로가 없으면 승인 후 영영 고칠 수 없다.
+    """
+    from PySide6.QtWidgets import QInputDialog
+
+    project = service.create_project("승인 후 수정", domain_code=DomainCode.VIBEQUEST)
+    version = service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        fixture_idea("vibequest/refined_target.json"),
+    )
+    service.approve_structure(version.id)
+
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+
+    # 승인 상태: 잠겨 있고, 새 버전 버튼이 나와야 한다
+    assert screen._editors["first_success"].isReadOnly() is True
+    assert screen.new_version_button.isVisible() or not screen.save_button.isVisible()
+
+    # 새 버전 만들기
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("첫 성공 경험 보완", True))
+    screen._editors["first_success"].setPlainText("가입 없이 첫 3분 미션 하나를 끝낸다")
+    screen._create_new_version()
+
+    window.ctx.version = service.latest_version(project.id)
+    v2 = window.ctx.version
+    assert v2.version_no == 2
+    assert v2.structure_approved is False
+    assert v2.structured_idea["first_success"] == "가입 없이 첫 3분 미션 하나를 끝낸다"
+    assert v2.change_reason == "첫 성공 경험 보완"
+    # 원문은 그대로 물려받는다
+    assert v2.raw_input == service.list_versions(project.id)[1].raw_input
+
+    # 새 버전은 다시 편집 가능해야 한다
+    screen.refresh(window.ctx)
+    assert screen._editors["first_success"].isReadOnly() is False
+
+
+def test_unapproved_version_saves_structure_only_fields(window, service):
+    """B화면에만 있는 항목이 임시 저장으로 실제 반영되는지."""
+    project = service.create_project("임시저장", domain_code=DomainCode.VIBEQUEST)
+    version = service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        fixture_idea("vibequest/refined_target.json"),
+    )
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+
+    for key, value in (
+        ("first_success", "첫 3분 미션 완료"),
+        ("payer", "회사 교육 담당자"),
+        ("retention_reason", "매일 새 용어 지도가 열린다"),
+    ):
+        screen._editors[key].setPlainText(value)
+    screen._save()
+
+    saved = service.latest_version(project.id).structured_idea
+    assert saved["first_success"] == "첫 3분 미션 완료"
+    assert saved["payer"] == "회사 교육 담당자"
+    assert saved["retention_reason"] == "매일 새 용어 지도가 열린다"
+
+
+def test_required_fields_block_approval(window, service):
+    """필수 항목이 비면 승인 버튼이 잠긴다."""
+    from appcompass.core.models import RawIdeaInput
+
+    project = service.create_project("필수", domain_code=DomainCode.VIBEQUEST)
+    service.create_version(
+        project.id,
+        RawIdeaInput(app_name="앱", raw_idea="아이디어만 적었다"),
+        IdeaStructure(app_name="앱"),
+    )
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+
+    assert screen.approve_button.isEnabled() is False
+    assert "필수" in screen.approve_button.toolTip()
+
+    for key, value in (
+        ("target_user", "AI 코딩 도구로 처음 앱을 만들다 용어에 막히는 비개발자"),
+        ("problem_situation", "오류 메시지 용어를 몰라 작업이 자주 중단된다"),
+        ("core_action", "막힌 단계의 3분 미션 하나를 완료한다"),
+        ("expected_result", "작업 재개율이 50% 이상이 된다"),
+    ):
+        screen._editors[key].setPlainText(value)
+    screen._validate()
+
+    assert screen.approve_button.isEnabled() is True
+
+
+def test_examath_additionally_requires_payer(window, service):
+    """어린이 도메인은 구매자가 필수다 (아이가 쓰고 부모가 결제)."""
+    project = service.create_project("어린이", domain_code=DomainCode.EXAMATH)
+    idea = IdeaStructure.from_dict(
+        {**fixture_idea("examath/refined_target.json").to_dict(), "payer": None}
+    )
+    service.create_version(project.id, fixture_raw("examath/refined_target.json"), idea)
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+
+    assert screen.approve_button.isEnabled() is False, "구매자가 비었는데 승인이 가능합니다."
+
+    screen._editors["payer"].setPlainText("부모")
+    screen._validate()
+    assert screen.approve_button.isEnabled() is True
+
+
+def test_vibequest_does_not_require_payer(window, service):
+    """도메인마다 필수 항목이 다르다. VibeQuest는 구매자를 강제하지 않는다."""
+    project = service.create_project("바이브", domain_code=DomainCode.VIBEQUEST)
+    idea = IdeaStructure.from_dict(
+        {**fixture_idea("vibequest/refined_target.json").to_dict(), "payer": None}
+    )
+    service.create_version(project.id, fixture_raw("vibequest/refined_target.json"), idea)
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.version = service.latest_version(project.id)
+    screen = window.screens["structure"]
+    screen.refresh(window.ctx)
+    assert screen.approve_button.isEnabled() is True
+
+
+def test_hold_shows_cause_and_path_to_resolve(window, service):
+    """HOLD일 때 원인과 해결 경로가 화면에 나와야 한다."""
+    project = service.create_project("HOLD 안내", domain_code=DomainCode.VIBEQUEST)
+    version = service.create_version(
+        project.id,
+        fixture_raw("vibequest/refined_target.json"),
+        fixture_idea("vibequest/refined_target.json"),
+    )
+    service.approve_structure(version.id)
+    service.run_analysis(version.id)
+    window.ctx.project = service.get_project(project.id)
+    window.ctx.run = service.latest_run(project.id)
+
+    screen = window.screens["diagnosis"]
+    screen.refresh(window.ctx)
+
+    assert window.ctx.run.result["pivot"]["decision"] == "HOLD"
+    text = screen.hold_help._label.text()
+    assert "오류가 아닙니다" in text
+    assert "근거" in text
+
+
 def test_versions_screen_requires_two_versions(window, service):
     project = service.create_project("버전 스모크")
     service.create_version(

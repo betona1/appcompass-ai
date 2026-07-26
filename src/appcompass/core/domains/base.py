@@ -25,6 +25,13 @@ class DomainModule(Protocol):
     code: DomainCode
     label: str
 
+    def required_fields(self) -> tuple[tuple[str, str, str], ...]:
+        """공통 필수 항목에 더할 도메인 전용 필수 항목.
+
+        (필드명, 화면 라벨, 왜 필수인지) 형태.
+        승인 자체를 막는 항목이므로 꼭 필요한 것만 넣는다.
+        """
+
     def validate_input(self, idea: IdeaStructure) -> list[DiagnosisWarning]:
         """도메인 전용 경고."""
 
@@ -54,6 +61,9 @@ class GenericDomain:
 
     code = DomainCode.GENERIC
     label = "공통 (도메인 없음)"
+
+    def required_fields(self) -> tuple[tuple[str, str, str], ...]:
+        return ()
 
     def validate_input(self, idea: IdeaStructure) -> list[DiagnosisWarning]:
         return []

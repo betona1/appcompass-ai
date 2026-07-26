@@ -92,6 +92,18 @@ class ExamathDomain:
     code = DomainCode.EXAMATH
     label = "examath (초등 뺄셈 받아내림)"
 
+    # -- 필수 항목 ---------------------------------------------------------
+    def required_fields(self) -> tuple[tuple[str, str, str], ...]:
+        # 어린이가 쓰고 부모가 결제한다. 구매자를 비워 두면
+        # 부모용 가치 제안이 통째로 빠져 MVP가 성립하지 않는다 (CLAUDE.md 5.3).
+        return (
+            (
+                "payer",
+                "구매자",
+                "아이가 쓰고 부모가 결제합니다. 구매자를 비우면 부모용 가치가 빠집니다.",
+            ),
+        )
+
     # -- 경고 -------------------------------------------------------------
     def validate_input(self, idea: IdeaStructure) -> list[DiagnosisWarning]:
         w: list[DiagnosisWarning] = []

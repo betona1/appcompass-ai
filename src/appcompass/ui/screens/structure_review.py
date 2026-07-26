@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -23,8 +25,8 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.enums import DomainCode, Severity
-from ...core.models import IdeaStructure
-from ...core.rules import dedupe_warnings, detect_warnings
+from ...core.models import IdeaStructure, RawIdeaInput
+from ...core.rules import dedupe_warnings, detect_warnings, missing_required_fields
 from ...core.domains.registry import get_domain
 from ...services.app_service import ServiceError
 from ..context import ScreenContext
@@ -58,7 +60,10 @@ _FIELDS: tuple[tuple[str, str, str, int], ...] = (
 
 class StructureReviewScreen(ScreenBase):
     title = "B. 구조화 검토"
-    purpose = "원문을 구조화 필드로 옮기고 경고를 해소한 뒤 승인합니다. 승인해야 분석을 실행할 수 있습니다."
+    purpose = (
+        "원문을 구조화 필드로 옮기고 경고를 해소한 뒤 승인합니다. "
+        "빨간 별표(*)가 붙은 항목은 필수이며, 채워야 승인·분석이 가능합니다."
+    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -80,22 +85,36 @@ class StructureReviewScreen(ScreenBase):
         self.banner = Banner("", "info")
         left_layout.addWidget(self.banner)
 
+        self.required_banner = Banner("", "critical")
+        left_layout.addWidget(self.required_banner)
+
         box = QGroupBox("구조화 결과")
         form = QFormLayout(box)
+        self._field_labels: dict[str, QLabel] = {}
         for key, label, tip, height in _FIELDS:
             editor = labeled_text_area(tip, height)
             editor.textChanged.connect(self._schedule_validation)
             self._editors[key] = editor
-            form.addRow(label, editor)
+            field_label = QLabel(label)
+            field_label.setWordWrap(True)
+            self._field_labels[key] = field_label
+            form.addRow(field_label, editor)
         left_layout.addWidget(box)
 
         row = QHBoxLayout()
+        # 승인된 버전을 고치려면 새 버전이 필요하다.
+        # 구매자·첫 성공 경험·재방문 이유는 이 화면에만 있는 항목이라
+        # 이 버튼이 없으면 승인 후 고칠 방법이 사실상 없다.
+        self.new_version_button = QPushButton("이 내용으로 새 버전 만들어 수정하기")
+        self.new_version_button.setObjectName("Primary")
+        self.new_version_button.clicked.connect(self._create_new_version)
         self.save_button = QPushButton("임시 저장")
         self.save_button.clicked.connect(self._save)
         self.approve_button = QPushButton("승인하고 분석 실행")
         self.approve_button.setObjectName("Primary")
         self.approve_button.clicked.connect(self._approve)
         row.addStretch(1)
+        row.addWidget(self.new_version_button)
         row.addWidget(self.save_button)
         row.addWidget(self.approve_button)
         left_layout.addLayout(row)
@@ -168,19 +187,25 @@ class StructureReviewScreen(ScreenBase):
             )
         )
 
+        self._apply_required_marks()
+
         approved = ctx.version.structure_approved
-        self.save_button.setEnabled(not approved)
-        self.approve_button.setEnabled(True)
+        self.save_button.setVisible(not approved)
+        self.new_version_button.setVisible(approved)
         self.approve_button.setText(
             "분석 다시 실행" if approved else "승인하고 분석 실행"
         )
         for editor in self._editors.values():
             editor.setReadOnly(approved)
+            # 읽기 전용인데 겉모습이 같으면 사용자는 입력이 고장 났다고 생각한다.
+            editor.style().unpolish(editor)
+            editor.style().polish(editor)
 
         if approved:
             self.banner.set_text(
-                f"v{ctx.version.version_no}은(는) 이미 승인되었습니다. "
-                "내용을 바꾸려면 'A. 아이디어 입력'에서 새 버전을 만드세요.",
+                f"v{ctx.version.version_no}은(는) 승인되어 잠겨 있습니다. "
+                "무엇이 언제 왜 바뀌었는지 추적하기 위해 승인된 버전은 고치지 않습니다. "
+                "수정하려면 아래 '새 버전 만들어 수정하기'를 누르세요.",
                 "ok",
             )
         else:
@@ -217,12 +242,59 @@ class StructureReviewScreen(ScreenBase):
             distribution_channel=values["distribution_channel"],
         )
 
+    def _required_spec(self) -> tuple[tuple[str, str, str], ...]:
+        """공통 필수 항목 + 도메인 필수 항목."""
+        from ...core.rules import REQUIRED_STRUCTURE_FIELDS
+
+        ctx = self._ctx
+        extra = ()
+        if ctx is not None and ctx.project is not None:
+            extra = get_domain(ctx.project.domain_code).required_fields()
+        return tuple(REQUIRED_STRUCTURE_FIELDS) + tuple(extra)
+
+    def _apply_required_marks(self) -> None:
+        """필수 항목 라벨에 * 를 붙인다. 어디를 채워야 하는지 한눈에 보이게."""
+        required_keys = {k for k, _l, _w in self._required_spec()}
+        for key, label, _tip, _h in _FIELDS:
+            widget = self._field_labels.get(key)
+            if widget is None:
+                continue
+            if key in required_keys:
+                widget.setText(f"{label} <span style='color:#b3261e'>*</span>")
+                widget.setToolTip("필수 항목입니다. 채워야 승인할 수 있습니다.")
+            else:
+                widget.setText(label)
+                widget.setToolTip("")
+
     def _validate(self) -> None:
         ctx = self._ctx
         if ctx is None or ctx.project is None:
             return
         idea = self._current_idea()
         domain_code = ctx.project.domain_code
+
+        # --- 필수 항목 ---
+        missing = missing_required_fields(
+            idea, get_domain(domain_code).required_fields()
+        )
+        approved = bool(ctx.version and ctx.version.structure_approved)
+        self.required_banner.setVisible(bool(missing) and not approved)
+        if missing and not approved:
+            self.required_banner.set_text(
+                "필수 항목 "
+                + f"{len(missing)}개가 비어 있어 승인할 수 없습니다 — "
+                + ", ".join(label for _k, label, _w in missing)
+                + "\n"
+                + "\n".join(f"· {label}: {why}" for _k, label, why in missing),
+                "critical",
+            )
+        self.approve_button.setEnabled(approved or not missing)
+        self.approve_button.setToolTip(
+            ""
+            if (approved or not missing)
+            else "필수 항목을 모두 채워야 승인할 수 있습니다: "
+            + ", ".join(label for _k, label, _w in missing)
+        )
         # 분석 파이프라인과 동일한 규칙·동일한 중복 제거를 쓴다.
         # 여기 결과와 분석 결과가 달라지면 사용자가 시스템을 믿지 못한다.
         warnings = dedupe_warnings(
@@ -252,6 +324,42 @@ class StructureReviewScreen(ScreenBase):
         self.status_message.emit("구조화 결과를 저장했습니다.")
         self.data_changed.emit()
 
+    def _create_new_version(self) -> None:
+        """승인된 버전의 내용을 그대로 복사해 수정 가능한 새 버전을 만든다.
+
+        원문(raw_input)은 그대로 물려받는다. 여기서 바꾸는 것은 구조화 결과뿐이며,
+        A화면의 원문을 건드리지 않는다.
+        """
+        ctx = self._ctx
+        if ctx is None or ctx.version is None or ctx.project is None:
+            return
+
+        reason, ok = QInputDialog.getText(
+            self,
+            "새 버전 만들기",
+            "이 버전을 만드는 이유를 적으세요.\n"
+            "(버전 비교 화면에서 '왜 바뀌었는지'를 추적하는 데 쓰입니다)",
+            text=f"v{ctx.version.version_no} 구조화 결과 보완",
+        )
+        if not ok:
+            return
+
+        try:
+            version = ctx.service.create_version(
+                ctx.project.id,
+                RawIdeaInput.from_dict(ctx.version.raw_input),
+                self._current_idea(),
+                change_reason=reason,
+            )
+        except ServiceError as exc:
+            self.banner.set_text(str(exc), "critical")
+            return
+
+        self.status_message.emit(
+            f"v{version.version_no}을(를) 만들었습니다. 이제 수정할 수 있습니다."
+        )
+        self.data_changed.emit()
+
     def _approve(self) -> None:
         ctx = self._ctx
         if ctx is None or ctx.version is None:
@@ -259,6 +367,20 @@ class StructureReviewScreen(ScreenBase):
 
         if not ctx.version.structure_approved:
             idea = self._current_idea()
+
+            # 버튼이 비활성이지만 단축키·자동화 경로로 들어올 수 있다.
+            missing = missing_required_fields(
+                idea, get_domain(ctx.project.domain_code).required_fields()
+            )
+            if missing:
+                QMessageBox.warning(
+                    self,
+                    "필수 항목이 비어 있습니다",
+                    "아래 항목을 채워야 승인할 수 있습니다.\n\n"
+                    + "\n".join(f"· {label} — {why}" for _k, label, why in missing),
+                )
+                return
+
             criticals = [
                 w
                 for w in dedupe_warnings(

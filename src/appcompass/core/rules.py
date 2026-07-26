@@ -22,6 +22,37 @@ from .textsignals import (
 )
 
 
+#: 이것이 없으면 분석 자체가 성립하지 않는 항목.
+#: 나머지 빈칸은 경고로 남긴다. 전부 강제하면 "빈칸을 발견하게 한다"는
+#: 이 도구의 목적이 사라진다. 초안 단계의 아이디어도 기록할 수 있어야 한다.
+REQUIRED_STRUCTURE_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("target_user", "사용자", "누가 겪는 문제인지 없으면 타깃 평가가 전부 0점이 됩니다."),
+    ("problem_situation", "문제 상황", "문제가 없으면 진단할 대상이 없습니다."),
+    ("core_action", "핵심 행동", "무엇을 하게 할지 없으면 MVP를 만들 수 없습니다."),
+    ("expected_result", "기대 결과", "무엇이 달라지는지 없으면 성공을 판정할 수 없습니다."),
+)
+
+#: 필수 검사는 "비었는가"만 본다. 내용이 충분한지는 경고와 점수가 판정한다.
+#: 여기서 긴 길이를 요구하면 '부모', '본인' 같은 정당한 짧은 답이 막힌다.
+MIN_REQUIRED_LENGTH = 2
+
+
+def missing_required_fields(
+    idea: IdeaStructure,
+    extra_required: Sequence[tuple[str, str, str]] = (),
+) -> list[tuple[str, str, str]]:
+    """비어 있는 필수 항목을 (필드명, 라벨, 이유)로 돌려준다.
+
+    extra_required로 도메인 전용 필수 항목을 더할 수 있다.
+    예: examath는 어린이가 쓰고 부모가 결제하므로 구매자가 필수다.
+    """
+    missing: list[tuple[str, str, str]] = []
+    for key, label, why in tuple(REQUIRED_STRUCTURE_FIELDS) + tuple(extra_required):
+        if not has_text(getattr(idea, key, None), MIN_REQUIRED_LENGTH):
+            missing.append((key, label, why))
+    return missing
+
+
 def detect_warnings(
     idea: IdeaStructure,
     domain_code: DomainCode = DomainCode.GENERIC,

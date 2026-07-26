@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -54,6 +55,19 @@ class DiagnosisScreen(ScreenBase):
         d_layout.addWidget(self.decision_label)
         d_layout.addWidget(self.decision_reason)
         d_layout.addWidget(self.decision_meta)
+
+        # HOLD는 "고장"이 아니라 "근거 부족"이다. 그 사실과 해결 경로를 바로 붙인다.
+        self.hold_help = Banner("", "critical")
+        hold_row = QHBoxLayout()
+        self.evidence_button = QPushButton("근거 등록하러 가기")
+        self.evidence_button.setObjectName("Primary")
+        self.evidence_button.clicked.connect(
+            lambda: self.request_screen.emit("evidence")
+        )
+        hold_row.addStretch(1)
+        hold_row.addWidget(self.evidence_button)
+        d_layout.addWidget(self.hold_help)
+        d_layout.addLayout(hold_row)
         layout.addWidget(decision_box)
 
         # 2. 다음 행동
@@ -159,6 +173,22 @@ class DiagnosisScreen(ScreenBase):
         if would_be:
             meta_bits.insert(1, f"근거가 충분했다면 → {decision_label(would_be)}")
         self.decision_meta.setText("  ·  ".join(meta_bits))
+
+        is_hold = pivot["decision"] == "HOLD"
+        self.hold_help.setVisible(is_hold)
+        self.evidence_button.setVisible(is_hold)
+        if is_hold:
+            would = decision_label(would_be) if would_be else "판단 불가"
+            self.hold_help.set_text(
+                "이건 오류가 아닙니다. 등록된 근거가 없어 판단을 확정하지 않은 상태입니다.\n"
+                f"근거가 없으면 각 항목 신뢰도가 0.20을 넘지 못하고, 전체 "
+                f"{pivot['confidence']:.2f}가 기준 미만이라 HOLD가 됩니다.\n"
+                f"내용만 보면 방향은 '{would}'입니다. "
+                "'근거' 탭에서 실제 인터뷰나 관찰을 등록한 뒤 분석을 다시 실행하면 판단이 확정됩니다.\n"
+                "(근거 없이 결과만 보려면 '정책' 탭에서 HOLD 임계치를 낮출 수 있지만, "
+                "그렇게 나온 판단은 검증된 것이 아닙니다.)",
+                "critical",
+            )
 
         self.next_actions.set_items(result["next_actions"])
         self.risks.set_items(diag["critical_risks"])

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -64,14 +65,25 @@ class IdeaInputScreen(ScreenBase):
         self.revenue_raw = labeled_text_area("수익 모델 (모르면 비워 두세요)", 60)
         self.channel_raw = labeled_text_area("유입 경로 (모르면 비워 두세요)", 60)
 
+        # 별표가 붙은 칸은 B화면의 필수 항목으로 그대로 이어진다.
+        # 여기서 비워 두면 B화면에서 결국 채워야 하므로 미리 알려 준다.
+        star = " <span style='color:#b3261e'>*</span>"
         form.addRow("앱 이름", self.app_name)
         form.addRow("아이디어", self.raw_idea)
-        form.addRow("예상 사용자", self.target_raw)
-        form.addRow("문제 상황", self.problem_raw)
-        form.addRow("해결 방법", self.solution_raw)
+        form.addRow(QLabel("예상 사용자" + star), self.target_raw)
+        form.addRow(QLabel("문제 상황" + star), self.problem_raw)
+        form.addRow(QLabel("해결 방법" + star), self.solution_raw)
         form.addRow("수익 모델", self.revenue_raw)
         form.addRow("유입 경로", self.channel_raw)
-        outer.addWidget(box)
+        outer.addWidget(
+            box
+        )
+        outer.addWidget(
+            hint(
+                "* 표시는 분석에 반드시 필요한 항목입니다. 지금 비워 두어도 저장은 되지만, "
+                "'B. 구조화 검토'에서 채워야 승인과 분석이 가능합니다."
+            )
+        )
 
         self.reason = QLineEdit()
         self.reason.setPlaceholderText(

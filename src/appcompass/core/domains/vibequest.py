@@ -56,6 +56,13 @@ class VibeQuestDomain:
     code = DomainCode.VIBEQUEST
     label = "VibeQuest (바이브코딩 용어 학습)"
 
+    # -- 필수 항목 ---------------------------------------------------------
+    def required_fields(self) -> tuple[tuple[str, str, str], ...]:
+        # 실제 작업 상황이 없으면 일반 용어 퀴즈와 구분되지 않지만,
+        # 그것은 경고(NO_REAL_TASK_CONTEXT)로 잡는다.
+        # 승인 자체를 막을 만큼 기계적으로 판정할 수 있는 항목은 없다.
+        return ()
+
     # -- 경고 -------------------------------------------------------------
     def validate_input(self, idea: IdeaStructure) -> list[DiagnosisWarning]:
         w: list[DiagnosisWarning] = []
