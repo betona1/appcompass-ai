@@ -9,6 +9,12 @@ venv/
 
 *.spec
 
+# 비밀값 — 절대 커밋하지 않는다
+.env
+.env.*
+*.pem
+*.key
+
 # 로컬 도구 상태 (머신 경로·세션 타임스탬프 포함)
 .claude/settings.local.json
 docs/.bkit-memory.json
