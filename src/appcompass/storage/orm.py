@@ -224,6 +224,49 @@ class FeatureStatus(Base):
     )
 
 
+class ExperimentRow(Base):
+    """실험 설계와 결과 (TECHSPEC F-080).
+
+    가설 ID는 MVP 계획에서 도출된 것(H-PROBLEM 등)을 쓴다.
+    별도 가설 테이블을 두지 않는 이유는, 가설이 분석 결과에서 나오기 때문이다.
+    사람이 따로 관리하면 분석과 어긋난다.
+    """
+
+    __tablename__ = "experiments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    hypothesis_id: Mapped[str] = mapped_column(String(32))
+    experiment_type: Mapped[str] = mapped_column(String(32))
+    target_segment: Mapped[str] = mapped_column(Text, default="")
+    procedure: Mapped[list[str]] = mapped_column(JSON, default=list)
+    success_metric: Mapped[str] = mapped_column(Text, default="")
+    target_value: Mapped[str] = mapped_column(String(120), default="")
+    sample_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="DRAFT")
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    actual_sample: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantitative_result: Mapped[str] = mapped_column(Text, default="")
+    qualitative_summary: Mapped[str] = mapped_column(Text, default="")
+    conclusion: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    next_experiment: Mapped[str] = mapped_column(Text, default="")
+    evidence_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (Index("ix_experiments_project", "project_id", "status"),)
+
+
 class Report(Base):
     __tablename__ = "reports"
 

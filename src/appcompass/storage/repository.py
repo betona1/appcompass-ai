@@ -19,6 +19,7 @@ from .orm import (
     EvaluationPolicyRow,
     EvaluationScore,
     Evidence,
+    ExperimentRow,
     FeatureStatus,
     Project,
     ProjectVersion,
@@ -223,6 +224,27 @@ class Repository:
             row.note = note
         self.session.flush()
         return row
+
+    # -- 실험 -------------------------------------------------------------
+    def add_experiment(self, **kwargs: Any) -> ExperimentRow:
+        row = ExperimentRow(**kwargs)
+        self.session.add(row)
+        self.session.flush()
+        return row
+
+    def get_experiment(self, experiment_id: str) -> ExperimentRow | None:
+        return self.session.get(ExperimentRow, experiment_id)
+
+    def list_experiments(self, project_id: str) -> list[ExperimentRow]:
+        stmt = (
+            select(ExperimentRow)
+            .where(ExperimentRow.project_id == project_id)
+            .order_by(ExperimentRow.created_at)
+        )
+        return list(self.session.scalars(stmt))
+
+    def delete_experiment(self, row: ExperimentRow) -> None:
+        self.session.delete(row)
 
     # -- 보고서 -----------------------------------------------------------
     def add_report(self, **kwargs: Any) -> Report:

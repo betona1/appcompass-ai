@@ -23,13 +23,23 @@ from ..core.enums import (
     ReportFormat,
 )
 from ..core.domains.registry import get_domain
-from ..core.improvement import render_improvement
+from ..core.experiment import (
+    Experiment,
+    ExperimentConclusion,
+    ExperimentStatus,
+    ExperimentSuggestion,
+    ExperimentType,
+    evidence_from_experiment,
+    suggest_experiments,
+)
+from ..core.improvement import judge_hypotheses, render_improvement
 from ..core.nextstep import NextStep, ProjectState, decide_next_step
 from ..core.rules import missing_required_fields
 from ..core.models import (
     AnalysisResult,
     EvidenceItem,
     FeatureImplementation,
+    HypothesisVerdict,
     IdeaStructure,
     RawIdeaInput,
     feature_key,
@@ -45,6 +55,7 @@ from ..storage.db import Database
 from ..storage.orm import (
     AnalysisRun,
     Evidence,
+    ExperimentRow,
     Project,
     ProjectVersion,
     utcnow,
@@ -562,6 +573,159 @@ class AppService:
             self._require_project(repo, run.project_id)
             version = repo.get_version(run.project_version_id)
             return self._run_dto(run, version.version_no if version else 0)
+
+    # ==================================================================
+    # 실험 (TECHSPEC F-080)
+    # ==================================================================
+    def hypothesis_verdicts(self, project_id: str) -> list[HypothesisVerdict]:
+        """최신 분석 기준 가설별 검증 현황."""
+        policy = self.get_policy()
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            run = repo.latest_run(project_id)
+            if run is None or not run.result:
+                return []
+            evidence = [self._evidence_item(e) for e in repo.list_evidence(project_id)]
+            payload = dict(run.result)
+        return judge_hypotheses(AnalysisResult.from_dict(payload), evidence, policy)
+
+    def suggest_experiments(self, project_id: str, limit: int = 3):
+        """검증되지 않은 가설에 대한 실험 제안."""
+        verdicts = self.hypothesis_verdicts(project_id)
+        if not verdicts:
+            return []
+        with self.db.transaction() as s:
+            domain = Repository(s).get_project(project_id).domain_code
+        return suggest_experiments(verdicts, DomainCode(domain), limit=limit)
+
+    def list_experiments(self, project_id: str) -> list[Experiment]:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            return [self._experiment(r) for r in repo.list_experiments(project_id)]
+
+    def create_experiment_from_suggestion(
+        self, project_id: str, suggestion: ExperimentSuggestion
+    ) -> Experiment:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            self._require_project(repo, project_id)
+            row = repo.add_experiment(
+                project_id=project_id,
+                title=suggestion.title,
+                hypothesis_id=suggestion.hypothesis_id,
+                experiment_type=str(suggestion.experiment_type),
+                procedure=list(suggestion.procedure),
+                success_metric=suggestion.success_metric,
+                target_value=suggestion.target_value,
+                sample_goal=suggestion.sample_goal,
+                status=str(ExperimentStatus.READY),
+            )
+            repo.audit(
+                self.actor_id, AuditAction.EXPERIMENT_CREATED, "Experiment", row.id,
+                after={"hypothesis": suggestion.hypothesis_id, "title": row.title},
+            )
+            repo.track("experiment_created", project_id,
+                       {"hypothesis": suggestion.hypothesis_id})
+            return self._experiment(row)
+
+    def update_experiment(self, experiment_id: str, **changes: Any) -> Experiment:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            row = repo.get_experiment(experiment_id)
+            if row is None:
+                raise ServiceError("실험을 찾을 수 없습니다.")
+            self._require_project(repo, row.project_id)
+            for key, value in changes.items():
+                if not hasattr(row, key):
+                    continue
+                if key in ("status", "conclusion", "experiment_type") and value is not None:
+                    value = str(value)
+                setattr(row, key, value)
+            if row.status == str(ExperimentStatus.COMPLETED) and row.ended_at is None:
+                row.ended_at = utcnow()
+            return self._experiment(row)
+
+    def delete_experiment(self, experiment_id: str) -> None:
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            row = repo.get_experiment(experiment_id)
+            if row is None:
+                raise ServiceError("실험을 찾을 수 없습니다.")
+            self._require_project(repo, row.project_id)
+            repo.audit(
+                self.actor_id, AuditAction.EXPERIMENT_DELETED, "Experiment", row.id,
+                before={"title": row.title},
+            )
+            repo.delete_experiment(row)
+
+    def convert_experiment_to_evidence(self, experiment_id: str) -> EvidenceDTO:
+        """완료된 실험을 근거로 등록한다. 이것이 순환을 닫는 지점이다.
+
+        근거 유형은 실험 유형이 결정한다. 사용자가 고르게 하면
+        인터뷰를 '행동 데이터'로 등록해 신뢰도를 부풀릴 수 있다.
+        """
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            row = repo.get_experiment(experiment_id)
+            if row is None:
+                raise ServiceError("실험을 찾을 수 없습니다.")
+            project = self._require_project(repo, row.project_id)
+            experiment = self._experiment(row)
+            project_id = project.id
+
+        if experiment.evidence_id:
+            raise ServiceError("이미 근거로 등록된 실험입니다.")
+        if not experiment.can_become_evidence:
+            raise ServiceError(
+                "완료되고 결론이 난 실험만 근거로 등록할 수 있습니다.\n"
+                "'판단 불가'는 근거가 되지 않습니다 — 표본이나 설계를 보완해 다시 실행하세요."
+            )
+
+        verdicts = {v.id: v for v in self.hypothesis_verdicts(project_id)}
+        verdict = verdicts.get(experiment.hypothesis_id)
+        if verdict is None:
+            raise ServiceError(
+                "이 실험이 연결된 가설을 찾을 수 없습니다. 분석을 먼저 실행하세요."
+            )
+
+        payload = evidence_from_experiment(experiment, verdict.dimensions)
+        dto = self.add_evidence(project_id, **payload)
+
+        with self.db.transaction() as s:
+            repo = Repository(s)
+            row = repo.get_experiment(experiment_id)
+            row.evidence_id = dto.id
+            repo.track("experiment_completed", project_id,
+                       {"conclusion": str(experiment.conclusion)})
+        return dto
+
+    @staticmethod
+    def _experiment(row: ExperimentRow) -> Experiment:
+        return Experiment(
+            id=row.id,
+            project_id=row.project_id,
+            title=row.title,
+            hypothesis_id=row.hypothesis_id,
+            experiment_type=ExperimentType(row.experiment_type),
+            target_segment=row.target_segment,
+            procedure=tuple(row.procedure or ()),
+            success_metric=row.success_metric,
+            target_value=row.target_value,
+            sample_goal=row.sample_goal,
+            status=ExperimentStatus(row.status),
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            actual_sample=row.actual_sample,
+            quantitative_result=row.quantitative_result,
+            qualitative_summary=row.qualitative_summary,
+            conclusion=(
+                ExperimentConclusion(row.conclusion) if row.conclusion else None
+            ),
+            next_experiment=row.next_experiment,
+            evidence_id=row.evidence_id,
+        )
 
     # ==================================================================
     # 다음 할 일

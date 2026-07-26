@@ -166,7 +166,7 @@ def test_evidence_step_appears_when_hold(service):
 
     step = service.next_step(project.id)
     assert step.step_id == "ADD_EVIDENCE"
-    assert step.screen == "evidence"
+    assert step.screen == "experiments"
     assert "HOLD" in step.why or "판단 보류" in step.why
 
 

@@ -38,6 +38,7 @@ from .context import ScreenContext
 from .screens.base import ScreenBase
 from .screens.diagnosis import DiagnosisScreen
 from .screens.evidence import EvidenceScreen
+from .screens.experiments import ExperimentsScreen
 from .screens.guide import GuideScreen
 from .screens.idea_input import IdeaInputScreen
 from .screens.mvp import MvpScreen
@@ -218,6 +219,7 @@ class MainWindow(QMainWindow):
             "diagnosis": DiagnosisScreen(),
             "targets": TargetsScreen(),
             "mvp": MvpScreen(),
+            "experiments": ExperimentsScreen(),
             "report": ReportScreen(),
             "versions": VersionsScreen(),
             "policy": PolicyScreen(),

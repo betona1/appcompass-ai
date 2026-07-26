@@ -158,6 +158,18 @@ def run_selftest(report_path: str | None = None) -> int:
             f"{len(improve)}자",
         )
 
+        # 실험 제안 — 검증되지 않은 가설에 실험이 붙는지
+        from ..core.experiment import suggest_experiments
+        from ..core.improvement import judge_hypotheses
+
+        verdicts = judge_hypotheses(result, [], EvaluationPolicy())
+        sugs = suggest_experiments(verdicts, DomainCode.VIBEQUEST, limit=3)
+        check(
+            "실험 제안",
+            bool(sugs) and all(s.procedure and s.success_metric for s in sugs),
+            f"{len(sugs)}개 제안",
+        )
+
         # 다음 할 일 — 상태별로 안내가 나오는지
         steps = [
             decide_next_step(ProjectState(has_project=False)),

@@ -2,7 +2,7 @@
 
 앱 아이디어를 구조화하고 진단해 **유지·수정·피벗**을 판단하는 기획 의사결정 시스템.
 
-현재 단계: **Phase 0 + Phase 1 (PySide6 데스크톱, 규칙 엔진 전용)**
+현재 단계: **Phase 0~2 완료 (PySide6 데스크톱, 규칙 엔진 전용)**
 
 > **AI가 정답을 결정하지 않습니다.**
 > 이 도구는 문제를 구조화하고, 부족한 근거를 찾고, 검증할 실험을 제안합니다.
@@ -48,7 +48,7 @@ python tools/build_exe.py
 ## 테스트
 
 ```bash
-pytest -q                # 88개
+pytest -q                # 168개
 ```
 
 UI 스모크 테스트는 offscreen 모드로 돌아가므로 창이 뜨지 않습니다.
@@ -80,6 +80,11 @@ appcompass/
 │  ├─ pipeline.py      오케스트레이터
 │  ├─ report.py        Markdown / HTML
 │  ├─ schema.py        JSON Schema 검증
+│  ├─ techspec.py      구현용 기술 명세 생성
+│  ├─ improvement.py   이미 만든 MVP의 개선 명세
+│  ├─ experiment.py    실험 제안과 근거 변환
+│  ├─ nextstep.py      다음 할 일 판정
+│  ├─ exports.py       작업용 엑셀
 │  ├─ ports.py         LLM 연결 지점 (지금은 비어 있음)
 │  └─ domains/         VibeQuest / examath 도메인 모듈
 ├─ storage/     SQLAlchemy 2.0 ORM + 리포지토리
@@ -104,6 +109,7 @@ appcompass/
 | C. 자동 진단 | 판단 → 다음 행동 → 위험 → 점수 | — |
 | D. 타깃 후보 | 후보 비교 후 하나 선택 | — |
 | E. MVP | P0 / P1 / 제외 기능 확정 + **구현 상태 표시** | — |
+| **F. 실험** | **가설별 추천 실험 → 결과 → 근거 자동 등록** | 판단 갱신 |
 | G. 피벗 보고서 | 보고서·**기술명세(TECHSPEC)**·**엑셀** 내보내기 | — |
 | H. 버전 비교 | 무엇이 왜 바뀌었고 점수·판단이 어떻게 달라졌는지 | — |
 | 정책 | 가중치·임계치 수정 (운영자) | 합계 100 강제 |
@@ -163,10 +169,7 @@ appcompass/
 
 ## 아직 없는 것
 
-Phase 2 이후로 미룬 항목입니다.
-
-- 가설·실험 설계와 결과 입력 (화면 F)
-- 피벗 승인/거절 워크플로
+- 피벗 승인/거절 워크플로 (Phase 3)
 - PDF 내보내기
 - 앱 이벤트 수집 SDK, 퍼널 대시보드
 - LLM 연동 (`core/ports.py`에 인터페이스만 열려 있음)
@@ -191,6 +194,8 @@ class MyDomain:
     def constrain_mvp(self, plan, idea) -> MvpPlan: ...
     def domain_metrics(self) -> list[MetricDefinition]: ...
     def domain_pivot_rules(self) -> list[PivotRule]: ...
+    def required_fields(self) -> tuple[tuple[str, str, str], ...]: ...
+    def evidence_examples(self) -> list[EvidenceExample]: ...
 ```
 
 ---
